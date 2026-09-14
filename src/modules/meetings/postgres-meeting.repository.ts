@@ -42,7 +42,7 @@ const replayMetadataSchema = z.object({ participantId: z.uuid() }).strict();
 @Injectable()
 export class PostgresMeetingRepository implements MeetingRepository {
   public constructor(
-    private readonly unitOfWork: PostgresUnitOfWork,
+    @Inject(PostgresUnitOfWork) private readonly unitOfWork: PostgresUnitOfWork,
     @Inject(APPLICATION_CONFIG) private readonly config: ApplicationConfig,
   ) {}
 
@@ -368,8 +368,12 @@ async function writeAuditAndOutbox(
        (event_id, aggregate_type, aggregate_id, meeting_id, event_type,
         event_version, destination, partition_key, payload)
      VALUES
-       (uuidv7(), 'meeting', $1, $1, $3, 1, 'kafka_backend', $1::text,
-        jsonb_build_object('meetingId', $1::text, 'participantId', $2::text))`,
+       (uuidv7(), 'meeting', $1::uuid, $1::uuid, $3, 1, 'kafka_backend',
+        ($1::uuid)::text,
+        jsonb_build_object(
+          'meetingId', ($1::uuid)::text,
+          'participantId', ($2::uuid)::text
+        ))`,
     [meetingId, participantId, eventType],
   );
 }

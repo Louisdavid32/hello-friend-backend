@@ -10,6 +10,7 @@ import {
 import { ConfigurationError } from "./configuration-error.js";
 import { loadInfrastructureConfig } from "./infrastructure-config-loader.js";
 import { loadMeetingsConfig } from "./meetings-config-loader.js";
+import { loadRealtimeConfig } from "./realtime-config-loader.js";
 import {
   assertValidCidrs,
   deepFreeze,
@@ -115,6 +116,21 @@ const environmentSchema = z.object({
   MEETING_CREATE_RATE_LIMIT: integer(1, 10_000).default(20),
   MEETING_JOIN_RATE_LIMIT: integer(1, 100_000).default(60),
   MEETING_RATE_LIMIT_WINDOW_SECONDS: integer(1, 3_600).default(60),
+  REALTIME_TICKET_TTL_SECONDS: integer(5, 60).default(20),
+  REALTIME_AUTH_TIMEOUT_MS: integer(1_000, 15_000).default(5_000),
+  REALTIME_HEARTBEAT_INTERVAL_MS: integer(5_000, 60_000).default(25_000),
+  REALTIME_PRESENCE_TTL_SECONDS: integer(30, 300).default(75),
+  REALTIME_MAX_MESSAGE_BYTES: integer(1_024, 65_536).default(16_384),
+  REALTIME_MAX_BUFFERED_BYTES: integer(65_536, 16_777_216).default(1_048_576),
+  REALTIME_MAX_PENDING_COMMANDS: integer(1, 128).default(16),
+  REALTIME_MESSAGE_RATE_PER_SECOND: integer(1, 1_000).default(20),
+  REALTIME_MESSAGE_BURST: integer(1, 2_000).default(40),
+  REALTIME_MAX_CONNECTIONS_PER_SOURCE: integer(1, 1_000).default(32),
+  REALTIME_MAX_CONNECTIONS_PER_SESSION: integer(1, 32).default(4),
+  REALTIME_TICKET_ISSUE_RATE_LIMIT: integer(1, 1_000).default(12),
+  REALTIME_TICKET_RATE_WINDOW_SECONDS: integer(1, 3_600).default(60),
+  REALTIME_SESSION_REVALIDATE_SECONDS: integer(5, 300).default(30),
+  REALTIME_MAX_PRESENCE_SNAPSHOT_PARTICIPANTS: integer(10, 10_000).default(500),
 });
 
 /**
@@ -219,6 +235,7 @@ export function loadApplicationConfig(
       pollIntervalMs: env.OUTBOX_POLL_INTERVAL_MS,
     },
     meetings,
+    realtime: loadRealtimeConfig(env),
   });
 }
 
@@ -245,8 +262,16 @@ function normalizeRealtimeUrl(value: string): string {
   if (url.protocol !== "ws:" && url.protocol !== "wss:") {
     throw new ConfigurationError("PUBLIC_REALTIME_URL must use ws or wss");
   }
-  if (url.username !== "" || url.password !== "" || url.hash !== "") {
-    throw new ConfigurationError("PUBLIC_REALTIME_URL must not contain credentials or a fragment");
+  if (
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    url.pathname !== "/v1/realtime"
+  ) {
+    throw new ConfigurationError(
+      "PUBLIC_REALTIME_URL must use the exact /v1/realtime path without credentials, query or fragment",
+    );
   }
   return url.toString();
 }

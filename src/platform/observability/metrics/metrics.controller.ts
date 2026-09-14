@@ -1,4 +1,4 @@
-import { Controller, Get, Res } from "@nestjs/common";
+import { Controller, Get, Inject, Res } from "@nestjs/common";
 import { ApiExcludeController } from "@nestjs/swagger";
 import type { FastifyReply } from "fastify";
 
@@ -8,7 +8,7 @@ import { MetricsRegistry } from "./metrics-registry.js";
 @ApiExcludeController()
 @Controller()
 export class MetricsController {
-  public constructor(private readonly metrics: MetricsRegistry) {}
+  public constructor(@Inject(MetricsRegistry) private readonly metrics: MetricsRegistry) {}
 
   @Get("/metrics")
   public async getMetrics(@Res() reply: FastifyReply): Promise<void> {

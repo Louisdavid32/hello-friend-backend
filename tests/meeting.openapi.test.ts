@@ -12,6 +12,15 @@ import {
   PublicMeetingRateLimitService,
   TrustedBrowserRequestPolicy,
 } from "../src/modules/meetings/index.js";
+import {
+  ManageRealtimeTicketUseCase,
+  RealtimeTicketController,
+  RealtimeTicketRateLimitService,
+} from "../src/modules/realtime-tickets/index.js";
+import {
+  AuthenticateSessionUseCase,
+  SessionHttpCredentials,
+} from "../src/modules/sessions/index.js";
 import { ApplicationConfigModule, loadApplicationConfig } from "../src/platform/config/index.js";
 import { ErrorsModule } from "../src/platform/errors/index.js";
 import { ObservabilityModule, StructuredLogger } from "../src/platform/observability/index.js";
@@ -34,7 +43,7 @@ describe("meeting OpenAPI contract", () => {
         ObservabilityModule.forRoot(logger),
         ErrorsModule,
       ],
-      controllers: [MeetingController],
+      controllers: [MeetingController, RealtimeTicketController],
       providers: [
         AnonymousSessionCookieService,
         TrustedBrowserRequestPolicy,
@@ -45,6 +54,22 @@ describe("meeting OpenAPI contract", () => {
         {
           provide: PublicMeetingRateLimitService,
           useValue: { consumeCreate: vi.fn(), consumeJoin: vi.fn() },
+        },
+        {
+          provide: SessionHttpCredentials,
+          useValue: { extract: vi.fn() },
+        },
+        {
+          provide: AuthenticateSessionUseCase,
+          useValue: { authenticate: vi.fn(), revalidate: vi.fn() },
+        },
+        {
+          provide: RealtimeTicketRateLimitService,
+          useValue: { consume: vi.fn() },
+        },
+        {
+          provide: ManageRealtimeTicketUseCase,
+          useValue: { issue: vi.fn(), consume: vi.fn() },
         },
       ],
     };
@@ -60,11 +85,19 @@ describe("meeting OpenAPI contract", () => {
       const document = response.json();
       const creation = document.paths["/v1/meetings"].post;
       const join = document.paths["/v1/meetings/{meetingId}/join"].post;
+      const realtimeTicket = document.paths["/v1/realtime-tickets"].post;
 
       expect(response.statusCode).toBe(200);
       expect(creation.responses["201"].headers).toHaveProperty("Set-Cookie");
       expect(creation.responses).toHaveProperty("429");
       expect(join.responses).toHaveProperty("401");
+      expect(realtimeTicket.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "X-CSRF-Token", required: true }),
+          expect.objectContaining({ name: "X-Device-Binding", required: true }),
+        ]),
+      );
+      expect(realtimeTicket.responses).toHaveProperty("503");
       expect(document.components.schemas).toHaveProperty("ProblemDetailsDto");
       expect(
         document.components.schemas.AnonymousMeetingSessionResponseDto.properties,

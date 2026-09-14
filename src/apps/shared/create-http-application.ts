@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import type { DynamicModule, Type } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
-import { WsAdapter } from "@nestjs/platform-ws";
 import helmet from "@fastify/helmet";
 
+import { SecureWebSocketAdapter } from "../../modules/realtime/secure-websocket.adapter.js";
 import type { ApplicationConfig } from "../../platform/config/index.js";
 import { configureOpenApi } from "../../platform/documentation/index.js";
 import { GlobalExceptionFilter } from "../../platform/errors/index.js";
+import { ApplicationLifecycleState } from "../../platform/health/index.js";
 import type { StructuredLogger } from "../../platform/observability/index.js";
 
 export interface HttpApplicationOptions {
@@ -53,7 +54,11 @@ export async function createHttpApplication(
     done();
   });
 
-  if (options.enableWebSockets) app.useWebSocketAdapter(new WsAdapter(app));
+  if (options.enableWebSockets) {
+    app.useWebSocketAdapter(
+      new SecureWebSocketAdapter(app, config, app.get(ApplicationLifecycleState)),
+    );
+  }
   app.useGlobalFilters(app.get(GlobalExceptionFilter));
   configureOpenApi(app, config);
   await app.init();

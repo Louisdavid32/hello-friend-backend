@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { z } from "zod";
 
 import { PostgresConnection, PostgresUnitOfWork } from "../../platform/database/index.js";
@@ -22,8 +22,8 @@ const deliveryRowSchema = z.object({
 @Injectable()
 export class PostgresOutboxRepository implements OutboxRepository {
   public constructor(
-    private readonly database: PostgresConnection,
-    private readonly unitOfWork: PostgresUnitOfWork,
+    @Inject(PostgresConnection) private readonly database: PostgresConnection,
+    @Inject(PostgresUnitOfWork) private readonly unitOfWork: PostgresUnitOfWork,
   ) {}
 
   /** Claims a bounded ordered batch with `FOR UPDATE SKIP LOCKED`. */

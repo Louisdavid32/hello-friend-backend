@@ -31,10 +31,11 @@ export function loadMeetingsConfig(
   secretMountRoot: string,
 ): MeetingsConfig {
   const secureDeployment = env.NODE_ENV === "staging" || env.NODE_ENV === "production";
-  const enabled = role === "api" && (env.MEETINGS_ENABLED ?? secureDeployment);
-  if (secureDeployment && role === "api" && !enabled) {
+  const servesMeetings = role === "api" || role === "realtime";
+  const enabled = servesMeetings && (env.MEETINGS_ENABLED ?? secureDeployment);
+  if (secureDeployment && servesMeetings && !enabled) {
     throw new ConfigurationError(
-      "Anonymous meeting routes cannot be disabled in the API deployment",
+      "Anonymous meeting security cannot be disabled in API or realtime deployments",
     );
   }
   const sessionCookieName =

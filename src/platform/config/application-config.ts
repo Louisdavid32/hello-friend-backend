@@ -170,7 +170,7 @@ export interface HmacKeyringSourceConfig {
 
 /** Anonymous meeting, capability and session security policy. */
 export interface MeetingsConfig {
-  /** Enables public anonymous meeting routes in the API process. */
+  /** Enables anonymous meeting and session security features for this process. */
   readonly enabled: boolean;
   /** Keyring dedicated to host and invitation capability digests. */
   readonly capabilityKeyring?: HmacKeyringSourceConfig;
@@ -192,6 +192,44 @@ export interface MeetingsConfig {
   readonly joinRateLimit: number;
   /** Public abuse-control fixed-window duration. */
   readonly rateLimitWindowSeconds: number;
+}
+
+/** Bounded realtime handshake, protocol, presence, and flow-control policy. */
+export interface RealtimeConfig {
+  /** Exact HTTP upgrade path accepted by the realtime process. */
+  readonly path: "/v1/realtime";
+  /** Required WebSocket subprotocol negotiated during the upgrade. */
+  readonly protocol: "hf-realtime.v1";
+  /** Lifetime of a one-use browser-to-WebSocket admission ticket. */
+  readonly ticketTtlSeconds: number;
+  /** Time allowed for the first authenticated protocol command. */
+  readonly authenticationTimeoutMs: number;
+  /** Interval between server WebSocket ping control frames. */
+  readonly heartbeatIntervalMs: number;
+  /** Redis presence expiry, deliberately longer than two heartbeat intervals. */
+  readonly presenceTtlSeconds: number;
+  /** Maximum complete inbound WebSocket message size. */
+  readonly maxMessageBytes: number;
+  /** Maximum queued outbound bytes before a slow consumer is disconnected. */
+  readonly maxBufferedBytes: number;
+  /** Maximum application commands waiting on one connection. */
+  readonly maxPendingCommands: number;
+  /** Sustained inbound application-message allowance per second. */
+  readonly messageRatePerSecond: number;
+  /** Short inbound application-message burst allowance. */
+  readonly messageBurst: number;
+  /** Concurrent unauthenticated and authenticated sockets allowed per source. */
+  readonly maxConnectionsPerSource: number;
+  /** Concurrent sockets allowed for one anonymous session. */
+  readonly maxConnectionsPerSession: number;
+  /** Realtime tickets issued per session and source during one window. */
+  readonly ticketIssueRateLimit: number;
+  /** Realtime ticket issuance fixed-window duration. */
+  readonly ticketRateLimitWindowSeconds: number;
+  /** Interval between durable session-validity checks on an active socket. */
+  readonly sessionRevalidateSeconds: number;
+  /** Maximum participant-presence entries returned in one snapshot. */
+  readonly maxPresenceSnapshotParticipants: number;
 }
 
 /** Complete immutable configuration consumed by a backend process. */
@@ -216,4 +254,6 @@ export interface ApplicationConfig {
   readonly outbox: OutboxConfig;
   /** Anonymous meeting and capability policy. */
   readonly meetings: MeetingsConfig;
+  /** Realtime admission, presence, and flow-control policy. */
+  readonly realtime: RealtimeConfig;
 }

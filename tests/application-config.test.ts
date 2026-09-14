@@ -13,6 +13,14 @@ describe("loadApplicationConfig", () => {
     expect(config.database.enabled).toBe(false);
     expect(config.redis.enabled).toBe(false);
     expect(config.meetings.enabled).toBe(false);
+    expect(config.realtime).toEqual(
+      expect.objectContaining({
+        path: "/v1/realtime",
+        protocol: "hf-realtime.v1",
+        ticketTtlSeconds: 20,
+        maxMessageBytes: 16_384,
+      }),
+    );
     expect(Object.isFrozen(config)).toBe(true);
     expect(Object.isFrozen(config.http.allowedOrigins)).toBe(true);
   });
@@ -165,6 +173,34 @@ describe("loadApplicationConfig", () => {
     expect(() =>
       loadApplicationConfig("api", { PUBLIC_APP_ORIGIN: "http://localhost:5173/app" }),
     ).toThrow("PUBLIC_APP_ORIGIN entries must not contain a path, query or fragment");
+  });
+
+  it("rejects realtime URLs with a query or a noncanonical path", () => {
+    expect(() =>
+      loadApplicationConfig("realtime", {
+        PUBLIC_REALTIME_URL: "ws://localhost:3001/v1/realtime?ticket=secret",
+      }),
+    ).toThrow("exact /v1/realtime path");
+    expect(() =>
+      loadApplicationConfig("realtime", {
+        PUBLIC_REALTIME_URL: "ws://localhost:3001/socket",
+      }),
+    ).toThrow("exact /v1/realtime path");
+  });
+
+  it("validates coupled realtime heartbeat and burst limits", () => {
+    expect(() =>
+      loadApplicationConfig("realtime", {
+        REALTIME_MESSAGE_RATE_PER_SECOND: "50",
+        REALTIME_MESSAGE_BURST: "20",
+      }),
+    ).toThrow("REALTIME_MESSAGE_BURST");
+    expect(() =>
+      loadApplicationConfig("realtime", {
+        REALTIME_HEARTBEAT_INTERVAL_MS: "30000",
+        REALTIME_PRESENCE_TTL_SECONDS: "30",
+      }),
+    ).toThrow("two heartbeat intervals");
   });
 
   it("rejects malformed trusted proxy ranges", () => {

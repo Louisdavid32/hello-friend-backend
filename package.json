@@ -29,11 +29,13 @@
     "start:migration": "node dist/apps/migration/bootstrap.js",
     "test": "vitest run",
     "test:integration": "vitest run tests/integration/infrastructure.integration.test.ts",
+    "test:integration:redis": "vitest run tests/integration/realtime-redis.integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/proxy-addr": "5.1.0",
     "@fastify/helmet": "13.1.1",
     "@fastify/static": "10.1.3",
     "@nestjs/common": "12.0.1",

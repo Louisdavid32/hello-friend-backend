@@ -1,6 +1,7 @@
 import { type DynamicModule, Module } from "@nestjs/common";
 
 import { OutboxModule } from "../../modules/outbox/index.js";
+import { RealtimeTicketMaintenanceModule } from "../../modules/realtime-tickets/index.js";
 import { ApplicationConfigModule, type ApplicationConfig } from "../../platform/config/index.js";
 import { DatabaseModule } from "../../platform/database/index.js";
 import { ErrorsModule } from "../../platform/errors/index.js";
@@ -21,6 +22,7 @@ export class WorkerModule {
         DatabaseModule,
         RedisModule,
         OutboxModule,
+        RealtimeTicketMaintenanceModule,
       ],
     };
   }

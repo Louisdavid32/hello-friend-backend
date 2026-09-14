@@ -9,8 +9,8 @@ import type { HealthReport } from "./health.types.js";
 export class HealthService {
   public constructor(
     @Inject(APPLICATION_CONFIG) private readonly config: ApplicationConfig,
-    private readonly lifecycle: ApplicationLifecycleState,
-    private readonly dependencies: DependencyHealthRegistry,
+    @Inject(ApplicationLifecycleState) private readonly lifecycle: ApplicationLifecycleState,
+    @Inject(DependencyHealthRegistry) private readonly dependencies: DependencyHealthRegistry,
   ) {}
 
   public liveness(): HealthReport {

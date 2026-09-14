@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Param, Post, Req, Res } from "@nestjs/common";
+import { Body, Controller, HttpCode, Inject, Param, Post, Req, Res } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -15,6 +15,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 import { ProblemDetailsDto } from "../../platform/errors/index.js";
 import { AnonymousSessionCookieService } from "./anonymous-session-cookie.service.js";
+import { TrustedBrowserRequestPolicy } from "../../platform/http/index.js";
 import { ManageAnonymousMeetingsUseCase } from "./manage-anonymous-meetings.use-case.js";
 import {
   AnonymousMeetingSessionResponseDto,
@@ -27,16 +28,19 @@ import {
   parseMeetingIdentifier,
 } from "./meeting-http.schemas.js";
 import { PublicMeetingRateLimitService } from "./public-rate-limit.service.js";
-import { TrustedBrowserRequestPolicy } from "./trusted-browser-request.policy.js";
 
 /** HTTP boundary for account-free meeting creation and invitation exchange. */
 @ApiTags("meetings")
 @Controller("v1/meetings")
 export class MeetingController {
   public constructor(
+    @Inject(ManageAnonymousMeetingsUseCase)
     private readonly meetings: ManageAnonymousMeetingsUseCase,
+    @Inject(PublicMeetingRateLimitService)
     private readonly rateLimit: PublicMeetingRateLimitService,
+    @Inject(AnonymousSessionCookieService)
     private readonly sessionCookie: AnonymousSessionCookieService,
+    @Inject(TrustedBrowserRequestPolicy)
     private readonly trustedBrowser: TrustedBrowserRequestPolicy,
   ) {}
 

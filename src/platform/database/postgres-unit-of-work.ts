@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient } from "pg";
 
 import type {
@@ -19,7 +19,7 @@ const BEGIN_BY_ISOLATION: Readonly<Record<TransactionIsolationLevel, string>> = 
 /** PostgreSQL unit of work that pins every transaction to exactly one pool client. */
 @Injectable()
 export class PostgresUnitOfWork implements UnitOfWork {
-  public constructor(private readonly database: PostgresConnection) {}
+  public constructor(@Inject(PostgresConnection) private readonly database: PostgresConnection) {}
 
   /** Runs one database-only callback atomically with bounded concurrency retries. */
   public async run<Result>(

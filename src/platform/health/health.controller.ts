@@ -1,4 +1,4 @@
-import { Controller, Get, Res } from "@nestjs/common";
+import { Controller, Get, Inject, Res } from "@nestjs/common";
 import {
   ApiOkResponse,
   ApiOperation,
@@ -15,7 +15,7 @@ import { HealthService } from "./health.service.js";
 @ApiTags("operability")
 @Controller()
 export class HealthController {
-  public constructor(private readonly health: HealthService) {}
+  public constructor(@Inject(HealthService) private readonly health: HealthService) {}
 
   @Get("/live")
   @ApiOperation({ summary: "Report process liveness" })

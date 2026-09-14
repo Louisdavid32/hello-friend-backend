@@ -12,6 +12,7 @@ export type {
   NodeEnvironment,
   ObservabilityConfig,
   OutboxConfig,
+  RealtimeConfig,
   RuntimeConfig,
   RedisConfig,
   SecretsConfig,

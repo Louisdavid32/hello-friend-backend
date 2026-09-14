@@ -21,7 +21,7 @@ export class PublicMeetingRateLimitService {
   private readonly keys: RedisKeyspace;
 
   public constructor(
-    private readonly redis: RedisConnections,
+    @Inject(RedisConnections) private readonly redis: RedisConnections,
     @Inject(APPLICATION_CONFIG) private readonly config: ApplicationConfig,
   ) {
     this.keys = new RedisKeyspace(config.redis.keyPrefix);

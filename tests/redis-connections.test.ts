@@ -77,6 +77,12 @@ describe("RedisConnections", () => {
     await connections.onModuleInit();
 
     expect(redisFactoryMocks.createClient).toHaveBeenCalledTimes(3);
+    expect(redisFactoryMocks.createClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commandOptions: { timeout: config.redis.commandTimeoutMs },
+        socket: expect.not.objectContaining({ socketTimeout: expect.anything() }),
+      }),
+    );
     expect(connections.command).toBe(fixtures[0]?.client);
     expect(connections.publisher).toBe(fixtures[1]?.client);
     expect(connections.subscriber).toBe(fixtures[2]?.client);

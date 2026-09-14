@@ -20,6 +20,18 @@ export class RedisKeyspace {
     return `${this.prefix}:presence:{${meetingId}}:connections`;
   }
 
+  /** Minimal per-connection presence payloads colocated by meeting hash tag. */
+  public meetingPresenceDetails(meetingId: string): string {
+    assertUuid(meetingId, "meeting ID");
+    return `${this.prefix}:presence:{${meetingId}}:details`;
+  }
+
+  /** Monotonic presence revision colocated with the meeting presence keys. */
+  public meetingPresenceRevision(meetingId: string): string {
+    assertUuid(meetingId, "meeting ID");
+    return `${this.prefix}:presence:{${meetingId}}:revision`;
+  }
+
   /** Sharded realtime notification channel colocated by meeting hash tag. */
   public meetingRealtimeChannel(meetingId: string): string {
     assertUuid(meetingId, "meeting ID");

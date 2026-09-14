@@ -1,6 +1,7 @@
 import { type DynamicModule, Module } from "@nestjs/common";
 
 import { ApplicationConfigModule, type ApplicationConfig } from "../../platform/config/index.js";
+import { RealtimeGatewayModule } from "../../modules/realtime/index.js";
 import { DatabaseModule } from "../../platform/database/index.js";
 import { ErrorsModule } from "../../platform/errors/index.js";
 import { HealthModule } from "../../platform/health/index.js";
@@ -19,6 +20,7 @@ export class RealtimeModule {
         HealthModule,
         DatabaseModule,
         RedisModule,
+        ...(config.meetings.enabled ? [RealtimeGatewayModule] : []),
       ],
     };
   }

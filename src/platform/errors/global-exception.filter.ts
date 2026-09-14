@@ -1,4 +1,4 @@
-import { ArgumentsHost, Catch, HttpException, type ExceptionFilter } from "@nestjs/common";
+import { ArgumentsHost, Catch, HttpException, Inject, type ExceptionFilter } from "@nestjs/common";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 import { StructuredLogger } from "../observability/index.js";
@@ -30,7 +30,7 @@ const TITLE_BY_STATUS: Readonly<Record<number, string>> = {
 /** Converts escaped HTTP exceptions into stable RFC 9457 responses and safe logs. */
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
-  public constructor(private readonly logger: StructuredLogger) {}
+  public constructor(@Inject(StructuredLogger) private readonly logger: StructuredLogger) {}
 
   public catch(error: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();

@@ -10,6 +10,7 @@ import {
   readSecretFile,
 } from "../../platform/config/index.js";
 import { ConfigurationError } from "../../platform/config/configuration-error.js";
+import type { SessionCredentialDigests, VersionedDigest } from "./hmac-keyring.types.js";
 
 const keyringSchema = z
   .object({
@@ -18,14 +19,6 @@ const keyringSchema = z
   })
   .strict();
 const BASE64URL_256 = /^[A-Za-z0-9_-]{43}$/u;
-
-/** Versioned HMAC result persisted without its source secret. */
-export interface VersionedDigest {
-  /** Key version required for rotation-aware verification. */
-  readonly version: number;
-  /** HMAC-SHA-256 output. */
-  readonly digest: Buffer;
-}
 
 interface LoadedKeyring {
   readonly currentVersion: number;
@@ -102,6 +95,31 @@ export class HmacKeyringService implements OnModuleInit, OnModuleDestroy {
   /** Digests a browser-generated device binding under a separate context. */
   public digestDeviceBinding(value: string): VersionedDigest {
     return this.digestSessionValue("device-binding", value);
+  }
+
+  /** Computes rotation candidates whose three proofs always share one key version. */
+  public sessionCredentialCandidates(
+    token: string,
+    csrfToken: string,
+    deviceBinding: string,
+  ): readonly SessionCredentialDigests[] {
+    const tokenSecret = decodeOpaqueSecret(token, "session");
+    const csrfSecret = decodeOpaqueSecret(csrfToken, "csrf");
+    const deviceSecret = decodeOpaqueSecret(deviceBinding, "device-binding");
+    try {
+      return [...this.requireSession().keys.entries()]
+        .sort(([left], [right]) => right - left)
+        .map(([version, key]) => ({
+          version,
+          tokenDigest: digest(key, "session", tokenSecret),
+          csrfDigest: digest(key, "csrf", csrfSecret),
+          deviceBindingDigest: digest(key, "device-binding", deviceSecret),
+        }));
+    } finally {
+      tokenSecret.fill(0);
+      csrfSecret.fill(0);
+      deviceSecret.fill(0);
+    }
   }
 
   /** Generates a 256-bit unpadded base64url token. */

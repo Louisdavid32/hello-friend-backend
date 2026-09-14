@@ -14,6 +14,12 @@ capacites HMAC versionnees, sessions opaques, cookie HttpOnly, controle Origin/F
 quotas Redis fermes en cas de panne, audit et outbox atomiques. Les modules metier suivent
 `02-specification-architecture-backend.md` sans dependance de production simulee.
 
+L'etape 3 ajoute l'authentification complete des sessions, les tickets WSS a usage unique audites,
+le handshake strict `/v1/realtime`, le protocole `hf-realtime.v1`, les limites par
+source/session/socket, le heartbeat, la backpressure, la presence Redis multi-instance et le
+drainage des sockets. Le backend applicatif ne transporte toujours aucun media et ne remplace pas le
+SFU.
+
 ## Prerequis
 
 - Node.js 24 LTS
@@ -42,12 +48,12 @@ la boucle locale. Redis est ephemere et utilise `noeviction`; PostgreSQL utilise
 docker compose up -d --wait postgres redis
 
 export DATABASE_ENABLED=true
-export DATABASE_DIRECT_URL='postgresql://hello_friend_owner:hello_friend_local_only@127.0.0.1:5432/hello_friend'
+export DATABASE_DIRECT_URL='postgresql://hello_friend_owner:hello_friend_local_only@127.0.0.1:55432/hello_friend'
 npm run migrate
 
 export DATABASE_URL="$DATABASE_DIRECT_URL"
 export REDIS_ENABLED=true
-export REDIS_URLS='redis://127.0.0.1:6379/0'
+export REDIS_URLS='redis://:hello_friend_redis_local_only@127.0.0.1:56379/0'
 export RUN_INFRASTRUCTURE_TESTS=true
 npm run test:integration
 ```
@@ -83,11 +89,26 @@ En staging/production, utiliser uniquement `CAPABILITY_HMAC_KEYRING_FILE` et
 `SESSION_HMAC_KEYRING_FILE` sous `SECRET_MOUNT_ROOT`; le cookie devient obligatoirement
 `__Host-hf_session; Secure; HttpOnly; SameSite=Strict; Path=/`.
 
+## Realtime local
+
+Lancer `api` et `realtime` avec PostgreSQL, Redis, `MEETINGS_ENABLED=true` et les memes keyrings.
+L'API authentifie cookie, `X-CSRF-Token`, `X-Device-Binding`, `Origin` et Fetch Metadata avant
+d'emettre `POST /v1/realtime-tickets`. Le navigateur ouvre ensuite `PUBLIC_REALTIME_URL` avec le
+sous-protocole `hf-realtime.v1` et envoie le ticket plus le binding dans la premiere commande
+`session.authenticate`.
+
+Le ticket n'est place ni dans l'URL ni dans le sous-protocole. Un ticket perdu ou consomme est
+remplace par une nouvelle requete HTTP ; il n'est jamais rejoue. Les limites et TTL sont documentes
+dans `.env.example`.
+
 ## Documentation
 
 - `01-cadrage-backend-temps-reel.md`
 - `02-specification-architecture-backend.md`
 - `03-modele-menaces-securite.md`
+- `04-specification-fonctionnelle-modulaire.md`
+- `05-rapport-validation-etape-3.md`
+- `src/modules/*/README.md`
 
 `npm run docs:check` bloque les API publiques non documentees. `npm run docs:code` genere le site
 TypeDoc dans `generated-docs/code`. En developpement et test, Swagger UI est servi sur `/docs` et le

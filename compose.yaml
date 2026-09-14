@@ -19,7 +19,7 @@ services:
       - -c
       - idle_in_transaction_session_timeout=10s
     ports:
-      - 127.0.0.1:5432:5432
+      - 127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -33,6 +33,8 @@ services:
 
   redis:
     image: redis:8.2.9-bookworm
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-hello_friend_redis_local_only}
     command:
       - redis-server
       - --appendonly
@@ -45,12 +47,14 @@ services:
       - noeviction
       - --protected-mode
       - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:-hello_friend_redis_local_only}
     ports:
-      - 127.0.0.1:6379:6379
+      - 127.0.0.1:${REDIS_HOST_PORT:-56379}:6379
     tmpfs:
       - /data:size=268435456,mode=0700
     healthcheck:
-      test: [CMD, redis-cli, ping]
+      test: [CMD-SHELL, 'redis-cli --no-auth-warning -a "$${REDIS_PASSWORD}" ping']
       interval: 2s
       timeout: 3s
       retries: 30

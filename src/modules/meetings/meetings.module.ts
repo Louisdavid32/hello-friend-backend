@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../../platform/database/index.js";
+import { TrustedBrowserRequestPolicy } from "../../platform/http/index.js";
 import { RedisModule } from "../../platform/redis/index.js";
 import { CapabilitiesModule } from "../capabilities/index.js";
 import { AnonymousSessionCookieService } from "./anonymous-session-cookie.service.js";
@@ -9,7 +10,6 @@ import { MeetingController } from "./meeting.controller.js";
 import { MEETING_REPOSITORY } from "./meeting.tokens.js";
 import { PostgresMeetingRepository } from "./postgres-meeting.repository.js";
 import { PublicMeetingRateLimitService } from "./public-rate-limit.service.js";
-import { TrustedBrowserRequestPolicy } from "./trusted-browser-request.policy.js";
 
 /** Provides anonymous meeting creation and invitation exchange. */
 @Module({

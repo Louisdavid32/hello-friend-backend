@@ -18,7 +18,7 @@ import type {
 @Injectable()
 export class ManageAnonymousMeetingsUseCase {
   public constructor(
-    private readonly keyrings: HmacKeyringService,
+    @Inject(HmacKeyringService) private readonly keyrings: HmacKeyringService,
     @Inject(MEETING_REPOSITORY) private readonly repository: MeetingRepository,
   ) {}
 

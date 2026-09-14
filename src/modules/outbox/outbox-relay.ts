@@ -13,8 +13,8 @@ export class OutboxRelay {
   public constructor(
     @Inject(OUTBOX_REPOSITORY) private readonly repository: OutboxRepository,
     @Inject(APPLICATION_CONFIG) private readonly config: ApplicationConfig,
-    private readonly handlers: OutboxHandlerRegistry,
-    private readonly logger: StructuredLogger,
+    @Inject(OutboxHandlerRegistry) private readonly handlers: OutboxHandlerRegistry,
+    @Inject(StructuredLogger) private readonly logger: StructuredLogger,
   ) {}
 
   /** Claims and processes at most one configured batch for this worker. */

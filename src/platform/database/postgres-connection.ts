@@ -21,8 +21,8 @@ export class PostgresConnection implements SqlExecutor, OnModuleInit, OnModuleDe
 
   public constructor(
     @Inject(APPLICATION_CONFIG) private readonly applicationConfig: ApplicationConfig,
-    private readonly health: DependencyHealthRegistry,
-    private readonly logger: StructuredLogger,
+    @Inject(DependencyHealthRegistry) private readonly health: DependencyHealthRegistry,
+    @Inject(StructuredLogger) private readonly logger: StructuredLogger,
   ) {}
 
   /** Opens and verifies the configured pool before the process becomes ready. */

@@ -29,9 +29,9 @@ const MIGRATION_FILENAME = /^(\d{4})_([a-z0-9_]+)\.sql$/u;
 @Injectable()
 export class MigrationRunner {
   public constructor(
-    private readonly database: PostgresConnection,
+    @Inject(PostgresConnection) private readonly database: PostgresConnection,
     @Inject(APPLICATION_CONFIG) private readonly config: ApplicationConfig,
-    private readonly logger: StructuredLogger,
+    @Inject(StructuredLogger) private readonly logger: StructuredLogger,
   ) {}
 
   /**

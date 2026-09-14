@@ -35,6 +35,7 @@ describe("HmacKeyringService", () => {
     const candidates = service.capabilityCandidates(secret);
     const session = service.digestSession(secret);
     const csrf = service.digestCsrf(secret);
+    const credentials = service.sessionCredentialCandidates(secret, secret, secret);
 
     expect(current.version).toBe(2);
     expect(candidates.map((candidate) => candidate.version)).toEqual([2, 1]);
@@ -42,6 +43,17 @@ describe("HmacKeyringService", () => {
       true,
     );
     expect(service.digestsEqual(session.digest, csrf.digest)).toBe(false);
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0]).toEqual(
+      expect.objectContaining({
+        version: 1,
+        tokenDigest: session.digest,
+        csrfDigest: csrf.digest,
+      }),
+    );
+    expect(
+      credentials[0]?.deviceBindingDigest.equals(service.digestDeviceBinding(secret).digest),
+    ).toBe(true);
     expect(service.generateOpaqueToken()).toMatch(/^[A-Za-z0-9_-]{43}$/u);
 
     service.onModuleDestroy();

@@ -24,8 +24,8 @@ export class RedisConnections implements OnModuleInit, OnModuleDestroy {
 
   public constructor(
     @Inject(APPLICATION_CONFIG) private readonly applicationConfig: ApplicationConfig,
-    private readonly health: DependencyHealthRegistry,
-    private readonly logger: StructuredLogger,
+    @Inject(DependencyHealthRegistry) private readonly health: DependencyHealthRegistry,
+    @Inject(StructuredLogger) private readonly logger: StructuredLogger,
   ) {}
 
   /** Resolves secrets, opens all three connections and verifies Redis before readiness. */
@@ -150,7 +150,6 @@ function createRedisClient(
 ): RedisConnectionClient {
   const socket = {
     connectTimeout: config.connectTimeoutMs,
-    socketTimeout: config.commandTimeoutMs,
     reconnectStrategy: (retries: number): number | Error => {
       if (retries >= 20) return new Error("Redis reconnect budget exhausted");
       const exponential = Math.min(config.maxReconnectDelayMs, 50 * 2 ** retries);
@@ -162,6 +161,7 @@ function createRedisClient(
     name,
     disableOfflineQueue: true,
     commandsQueueMaxLength: 1_000,
+    commandOptions: { timeout: config.commandTimeoutMs },
     pingInterval: 30_000,
     socket,
   };
