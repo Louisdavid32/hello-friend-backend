@@ -1,0 +1,7 @@
+coverage/
+generated-docs/
+dist/
+node_modules/
+package-lock.json
+01-cadrage-backend-temps-reel.md
+02-specification-architecture-backend.md

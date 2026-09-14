@@ -1,0 +1,1 @@
+export const APPLICATION_CONFIG = Symbol("APPLICATION_CONFIG");

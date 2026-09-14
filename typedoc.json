@@ -1,0 +1,15 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "excludeInternal": true,
+  "out": "generated-docs/code",
+  "readme": "README.md",
+  "requiredToBeDocumented": ["Class", "Function", "Interface", "TypeAlias"],
+  "treatValidationWarningsAsErrors": true,
+  "validation": {
+    "invalidLink": true,
+    "invalidPath": true,
+    "notDocumented": true,
+    "notExported": true
+  }
+}

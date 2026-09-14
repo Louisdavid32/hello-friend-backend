@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+coverage/
+generated-docs/
+dist/
+node_modules/
+*.log
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
