@@ -7,6 +7,7 @@ import {
   type ApplicationConfig,
   type AppRole,
 } from "./application-config.js";
+import { loadChatConfig } from "./chat-config-loader.js";
 import { ConfigurationError } from "./configuration-error.js";
 import { loadInfrastructureConfig } from "./infrastructure-config-loader.js";
 import { loadMeetingsConfig } from "./meetings-config-loader.js";
@@ -63,6 +64,7 @@ const environmentSchema = z.object({
   OPENAPI_ENABLED: boolean.optional(),
   OPENAPI_PATH: z.string().trim().default("/docs"),
   OPENAPI_JSON_PATH: z.string().trim().default("/openapi.json"),
+  ASYNCAPI_JSON_PATH: z.string().trim().default("/asyncapi.json"),
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalNonEmptyString,
   OTEL_TRACES_SAMPLER: z
@@ -131,6 +133,18 @@ const environmentSchema = z.object({
   REALTIME_TICKET_RATE_WINDOW_SECONDS: integer(1, 3_600).default(60),
   REALTIME_SESSION_REVALIDATE_SECONDS: integer(5, 300).default(30),
   REALTIME_MAX_PRESENCE_SNAPSHOT_PARTICIPANTS: integer(10, 10_000).default(500),
+  CHAT_ENABLED: boolean.optional(),
+  CHAT_MAX_CIPHERTEXT_BYTES: integer(64, 49_152).default(8_192),
+  CHAT_HISTORY_PAGE_DEFAULT: integer(1, 500).default(50),
+  CHAT_HISTORY_PAGE_MAX: integer(1, 500).default(200),
+  CHAT_RATE_PER_PARTICIPANT: integer(1, 100).default(5),
+  CHAT_RATE_BURST: integer(1, 500).default(10),
+  CHAT_FAST_PATH_LEASE_MS: integer(1_000, 30_000).default(3_000),
+  CHAT_HIGH_WATERMARK_INTERVAL_MS: integer(1_000, 60_000).default(5_000),
+  CHAT_REORDER_BUFFER_MESSAGES: integer(8, 2_000).default(256),
+  CHAT_RETENTION_DAYS: integer(1, 365).default(30),
+  CHAT_CLEANUP_BATCH_SIZE: integer(10, 10_000).default(500),
+  CHAT_CLEANUP_INTERVAL_MS: integer(10_000, 3_600_000).default(300_000),
 });
 
 /**
@@ -166,9 +180,10 @@ export function loadApplicationConfig(
   assertValidCidrs(trustedProxyCidrs);
   const openApiPath = normalizeRoutePath(env.OPENAPI_PATH, "OPENAPI_PATH");
   const openApiJsonPath = normalizeRoutePath(env.OPENAPI_JSON_PATH, "OPENAPI_JSON_PATH");
+  const asyncApiJsonPath = normalizeRoutePath(env.ASYNCAPI_JSON_PATH, "ASYNCAPI_JSON_PATH");
 
-  if (openApiPath === openApiJsonPath) {
-    throw new ConfigurationError("OPENAPI_PATH and OPENAPI_JSON_PATH must be different");
+  if (new Set([openApiPath, openApiJsonPath, asyncApiJsonPath]).size !== 3) {
+    throw new ConfigurationError("OpenAPI and AsyncAPI publication paths must be different");
   }
 
   if (!allowedOrigins.includes(publicAppOrigin)) {
@@ -185,6 +200,15 @@ export function loadApplicationConfig(
   }
   if (env.OUTBOX_BASE_RETRY_MS > env.OUTBOX_MAX_RETRY_MS) {
     throw new ConfigurationError("OUTBOX_BASE_RETRY_MS must not exceed OUTBOX_MAX_RETRY_MS");
+  }
+  const realtime = loadRealtimeConfig(env);
+  const chat = loadChatConfig(env, expectedRole, meetings.enabled, realtime, infrastructure.redis);
+  if (
+    chat.enabled &&
+    (expectedRole === "realtime" || expectedRole === "worker") &&
+    (!infrastructure.database.enabled || !infrastructure.redis.enabled)
+  ) {
+    throw new ConfigurationError("Durable chat requires both PostgreSQL and Redis");
   }
 
   return deepFreeze({
@@ -223,6 +247,7 @@ export function loadApplicationConfig(
         env.OPENAPI_ENABLED ?? (env.NODE_ENV === "development" || env.NODE_ENV === "test"),
       openApiPath,
       openApiJsonPath,
+      asyncApiJsonPath,
     },
     ...infrastructure,
     outbox: {
@@ -235,7 +260,8 @@ export function loadApplicationConfig(
       pollIntervalMs: env.OUTBOX_POLL_INTERVAL_MS,
     },
     meetings,
-    realtime: loadRealtimeConfig(env),
+    realtime,
+    chat,
   });
 }
 

@@ -2,6 +2,15 @@ import { Writable } from "node:stream";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import {
+  ChatFanoutService,
+  ChatOutboxPublisher,
+  type ChatMessage,
+  type ChatRepository,
+} from "../../src/modules/chat/index.js";
+import { ChatRateLimiter } from "../../src/modules/chat/chat-rate-limiter.js";
+import type { ChatMetrics } from "../../src/modules/chat/chat.metrics.js";
+import { OutboxHandlerRegistry, type OutboxDelivery } from "../../src/modules/outbox/index.js";
 import { PresenceService } from "../../src/modules/presence/index.js";
 import {
   RedisRealtimeTicketStore,
@@ -21,8 +30,11 @@ const sessionId = "018f5f87-5c7a-7abc-8def-0123456789c2";
 describe.skipIf(!enabled)("realtime Redis integration", () => {
   const config = loadApplicationConfig("worker", {
     NODE_ENV: "test",
+    DATABASE_ENABLED: "true",
+    DATABASE_URL: "postgresql://local:local@127.0.0.1:5432/local",
     REDIS_ENABLED: "true",
     REDIS_URLS: redisUrl,
+    CHAT_ENABLED: "true",
   });
   const logger = new StructuredLogger(
     config,
@@ -79,11 +91,11 @@ describe.skipIf(!enabled)("realtime Redis integration", () => {
       origin: "http://localhost:5173",
       deviceBindingDigest: "e".repeat(64),
       issuedAtMs: now,
-      expiresAtMs: now + 50,
+      expiresAtMs: now + 100,
     };
-    await expect(store.put(ticket, payload, 50)).resolves.toBe(true);
-    await expect(store.put(ticket, payload, 50)).resolves.toBe(false);
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await expect(store.put(ticket, payload, 100)).resolves.toBe(true);
+    await expect(store.put(ticket, payload, 100)).resolves.toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 500));
     await expect(store.take(ticket)).resolves.toBeUndefined();
   });
 
@@ -123,5 +135,73 @@ describe.skipIf(!enabled)("realtime Redis integration", () => {
     await presence.close(meetingId, sessionId, second);
     await unwatch();
     await presence.onModuleDestroy();
+  });
+
+  it("fans out one validated ciphertext on a sharded room channel", async () => {
+    const metrics = { recordFanout: vi.fn() };
+    const repository = {
+      readHighWatermarks: vi.fn().mockResolvedValue(new Map()),
+    } as unknown as ChatRepository;
+    const fanout = new ChatFanoutService(
+      redis,
+      repository,
+      metrics as unknown as ChatMetrics,
+      logger,
+      config,
+    );
+    const first = vi.fn();
+    const second = vi.fn();
+    const unwatchFirst = await fanout.watch(meetingId, first);
+    const unwatchSecond = await fanout.watch(meetingId, second);
+    const eventId = "018f5f87-5c7a-7abc-8def-0123456789d0";
+    const message: ChatMessage = {
+      eventId,
+      messageId: eventId,
+      meetingId,
+      senderParticipantId: participantId,
+      position: "1",
+      clientMessageId: "018f5f87-5c7a-7abc-8def-0123456789d1",
+      protocolVersion: 1,
+      groupId: "018f5f87-5c7a-7abc-8def-0123456789d2",
+      epoch: "1",
+      contentType: "text",
+      ciphertext: Buffer.from("opaque redis fixture").toString("base64url"),
+      createdAt: new Date().toISOString(),
+    };
+    const delivery: OutboxDelivery = {
+      deliveryId: "018f5f87-5c7a-7abc-8def-0123456789d3",
+      eventId,
+      eventType: "chat.message.created",
+      eventVersion: 1,
+      destination: "redis_realtime",
+      partitionKey: meetingId,
+      payload: { ...message },
+      attempts: 1,
+      lockedUntil: new Date(Date.now() + 3_000),
+    };
+    const publisher = new ChatOutboxPublisher(
+      new OutboxHandlerRegistry(),
+      redis,
+      metrics as unknown as ChatMetrics,
+      config,
+    );
+
+    await publisher.publish(delivery, new AbortController().signal);
+    await vi.waitFor(() => expect(first).toHaveBeenCalledWith({ kind: "message", message }));
+    expect(second).toHaveBeenCalledWith({ kind: "message", message });
+
+    await unwatchFirst();
+    await unwatchSecond();
+    await fanout.onModuleDestroy();
+  });
+
+  it("enforces the distributed chat burst atomically under concurrency", async () => {
+    const limiter = new ChatRateLimiter(redis, logger, config);
+    const decisions = await Promise.all(
+      Array.from({ length: 20 }, () => limiter.consume(meetingId, participantId)),
+    );
+
+    expect(decisions.filter((decision) => decision.allowed)).toHaveLength(config.chat.rateBurst);
+    expect(decisions.every((decision) => !decision.degraded)).toBe(true);
   });
 });

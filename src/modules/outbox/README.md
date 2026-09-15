@@ -17,14 +17,17 @@ obligatoire chez le consommateur.
 | OBX-005 | retry exponentiel avec jitter                  | implemente                  |
 | OBX-006 | passage `dead` apres budget                    | implemente                  |
 | OBX-007 | registre destination vers un seul handler      | implemente                  |
-| OBX-008 | boucle worker et handlers Redis/Kafka reels    | planifie etapes 3/4/6       |
+| OBX-008 | boucle worker non chevauchante                 | implemente etape 4          |
+| OBX-009 | handler Redis chat et voie rapide apres commit | implemente etape 4          |
+| OBX-010 | handlers Kafka et controle SFU                 | planifies etapes 5/6        |
 
 ## Invariants
 
 - la publication externe se produit hors transaction ;
 - une perte d'ack peut produire un doublon mais jamais un faux succes ;
 - seul le proprietaire du lease peut marquer `published` ou `retry` ;
-- payload et destination sont valides avant remise au handler ;
+- le worker ne claim que les destinations ayant un handler enregistre ;
+- payload, version, event ID et scope reunion sont valides avant publication ;
 - aucune erreur broker brute ou payload sensible n'entre dans les logs ;
 - `dead` est visible et alerte, jamais abandonne silencieusement.
 
@@ -42,14 +45,15 @@ et reparer Pub/Sub.
 | handler echoue                      | retry planifie avec erreur sanitisee          |
 | worker meurt apres claim            | autre worker reprend apres lease              |
 | publication reussit, ack SQL echoue | doublon possible au retry                     |
-| aucun handler                       | retry puis dead, readiness/alerte selon seuil |
+| aucun handler enregistre            | aucune ligne de cette destination n'est claim |
 | annulation shutdown                 | travaux non commences rendus au prochain poll |
 
 ## Preuves
 
 - `tests/outbox.test.ts` ;
 - `tests/integration/infrastructure.integration.test.ts` ;
-- futurs tests crash avant/apres publication et broker reel.
+- `tests/integration/chat-postgres.integration.test.ts` prouve la reprise apres expiration du lease
+  realtime et la publication Redis reelle.
 
 ## References
 

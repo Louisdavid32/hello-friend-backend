@@ -76,6 +76,8 @@ export interface DocumentationConfig {
   readonly openApiPath: string;
   /** Absolute path where the machine-readable OpenAPI document is mounted. */
   readonly openApiJsonPath: string;
+  /** Absolute path where the machine-readable AsyncAPI document is mounted. */
+  readonly asyncApiJsonPath: string;
 }
 
 /** Controls safe loading of file-mounted secrets. */
@@ -232,6 +234,34 @@ export interface RealtimeConfig {
   readonly maxPresenceSnapshotParticipants: number;
 }
 
+/** Durable encrypted-chat, history, fan-out, and retention policy. */
+export interface ChatConfig {
+  /** Enables chat commands and worker delivery for this deployment. */
+  readonly enabled: boolean;
+  /** Maximum decoded ciphertext bytes accepted from one client command. */
+  readonly maxCiphertextBytes: number;
+  /** Default number of messages returned by a history request. */
+  readonly historyPageDefault: number;
+  /** Hard upper bound for one history page. */
+  readonly historyPageMax: number;
+  /** Sustained distributed message allowance per participant and second. */
+  readonly ratePerParticipant: number;
+  /** Maximum distributed message burst per participant. */
+  readonly rateBurst: number;
+  /** Short outbox lease reserved for post-commit realtime publication. */
+  readonly fastPathLeaseMs: number;
+  /** Interval between durable high-watermark repair notifications. */
+  readonly highWatermarkIntervalMs: number;
+  /** Maximum out-of-order live messages retained per socket. */
+  readonly reorderBufferMessages: number;
+  /** Number of days encrypted chat rows remain available. */
+  readonly retentionDays: number;
+  /** Maximum expired messages deleted in one worker transaction. */
+  readonly cleanupBatchSize: number;
+  /** Delay between bounded retention worker passes. */
+  readonly cleanupIntervalMs: number;
+}
+
 /** Complete immutable configuration consumed by a backend process. */
 export interface ApplicationConfig {
   /** Process identity and lifecycle configuration. */
@@ -256,4 +286,6 @@ export interface ApplicationConfig {
   readonly meetings: MeetingsConfig;
   /** Realtime admission, presence, and flow-control policy. */
   readonly realtime: RealtimeConfig;
+  /** Durable encrypted chat policy. */
+  readonly chat: ChatConfig;
 }

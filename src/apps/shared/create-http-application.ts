@@ -7,7 +7,7 @@ import helmet from "@fastify/helmet";
 
 import { SecureWebSocketAdapter } from "../../modules/realtime/secure-websocket.adapter.js";
 import type { ApplicationConfig } from "../../platform/config/index.js";
-import { configureOpenApi } from "../../platform/documentation/index.js";
+import { configureAsyncApi, configureOpenApi } from "../../platform/documentation/index.js";
 import { GlobalExceptionFilter } from "../../platform/errors/index.js";
 import { ApplicationLifecycleState } from "../../platform/health/index.js";
 import type { StructuredLogger } from "../../platform/observability/index.js";
@@ -61,6 +61,7 @@ export async function createHttpApplication(
   }
   app.useGlobalFilters(app.get(GlobalExceptionFilter));
   configureOpenApi(app, config);
+  configureAsyncApi(app, config);
   await app.init();
   await fastify.ready();
   app.flushLogs();

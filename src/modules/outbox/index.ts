@@ -3,6 +3,8 @@ export { OutboxHandlerRegistry, type OutboxHandler } from "./outbox-handler.regi
 export { OutboxModule } from "./outbox.module.js";
 export type { OutboxRepository } from "./outbox.repository.js";
 export { OutboxRelay } from "./outbox-relay.js";
+export { OutboxWorker } from "./outbox-worker.js";
+export { OutboxWorkerModule } from "./outbox-worker.module.js";
 export { PostgresOutboxRepository } from "./postgres-outbox.repository.js";
 export { OUTBOX_REPOSITORY } from "./outbox.tokens.js";
 export {

@@ -1,5 +1,13 @@
 import { Inject, Injectable, type OnModuleDestroy } from "@nestjs/common";
-import { collectDefaultMetrics, Gauge, Registry } from "@prometheus-io/client";
+import {
+  collectDefaultMetrics,
+  Counter,
+  type CounterConfiguration,
+  Gauge,
+  Histogram,
+  type HistogramConfiguration,
+  Registry,
+} from "@prometheus-io/client";
 
 import { APPLICATION_CONFIG, type ApplicationConfig } from "../../config/index.js";
 
@@ -27,6 +35,20 @@ export class MetricsRegistry implements OnModuleDestroy {
 
   public get contentType(): string {
     return this.registry.contentType;
+  }
+
+  /** Creates and registers one process-scoped counter without exposing the mutable registry. */
+  public createCounter<Label extends string>(
+    configuration: Omit<CounterConfiguration<Label>, "registers">,
+  ): Counter<Label> {
+    return new Counter({ ...configuration, registers: [this.registry] });
+  }
+
+  /** Creates and registers one process-scoped histogram without exposing the mutable registry. */
+  public createHistogram<Label extends string>(
+    configuration: Omit<HistogramConfiguration<Label>, "registers">,
+  ): Histogram<Label> {
+    return new Histogram({ ...configuration, registers: [this.registry] });
   }
 
   /** Serializes all process metrics in the Prometheus exposition format. */

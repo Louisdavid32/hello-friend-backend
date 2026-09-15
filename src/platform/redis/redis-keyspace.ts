@@ -38,6 +38,12 @@ export class RedisKeyspace {
     return `${this.prefix}:rt:{${meetingId}}`;
   }
 
+  /** Sharded durable-chat fan-out channel isolated from coalescable presence events. */
+  public meetingChatChannel(meetingId: string): string {
+    assertUuid(meetingId, "meeting ID");
+    return `${this.prefix}:chat:{${meetingId}}`;
+  }
+
   /** Session-to-connection revocation index. */
   public sessionConnections(sessionId: string): string {
     assertUuid(sessionId, "session ID");

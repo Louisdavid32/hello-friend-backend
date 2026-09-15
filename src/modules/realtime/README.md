@@ -27,12 +27,14 @@ Les commandes suivantes utilisent ce principal et declenchent une nouvelle lectu
 toutes les `REALTIME_SESSION_REVALIDATE_SECONDS` secondes. La future commande de revocation
 diffusera en plus un signal immediat aux pods ; elle n'est pas simulee dans cette etape.
 
-## Protocole etape 3
+## Protocole etapes 3 et 4
 
 Client vers serveur :
 
 - `session.authenticate` ;
 - `room.subscribe` ;
+- `chat.message.submit` ;
+- `chat.sync.request` ;
 - `presence.heartbeat` ;
 - `ping`.
 
@@ -40,11 +42,16 @@ Serveur vers client :
 
 - `session.authenticated` ;
 - `room.snapshot` ;
+- `chat.message.accepted` ;
+- `chat.message.created` ;
+- `chat.sync.page` ;
+- `room.high_watermark` ;
 - `presence.changed` ;
 - `pong` ;
 - `slow_consumer`, `session.revoked`, `server.draining`, `error`.
 
-Les futurs messages chat/E2EE seront ajoutes sans changer l'enveloppe v1.
+Le contrat machine est genere dans `/asyncapi.json` lorsque la documentation locale est active. Les
+futurs messages E2EE seront ajoutes sans changer l'enveloppe v1.
 
 ## Limites
 
@@ -72,16 +79,28 @@ Le processus retire readiness, refuse les upgrades, envoie `server.draining`, la
 fenetre de reprise sur un autre pod, ferme les sockets avec code documente, retire listeners/timers,
 puis ferme Redis/PostgreSQL et OTel.
 
+## Chat et reconnexion
+
+`room.subscribe.chat` ouvre la subscription Redis avant la lecture PostgreSQL, bufferise pendant le
+catch-up, envoie le snapshot, puis fusionne le live par position. Un buffer plein ou une file de
+sortie saturee ferme explicitement en `1013`; aucun message durable n'est abandonne silencieusement.
+`chat.sync.request` exige le meme appareil public que l'abonnement du socket.
+
+Les erreurs `CHAT_*` restent des erreurs de commande et ne ferment pas le socket. Une erreur
+d'authentification, une frame invalide ou une saturation de transport conserve la politique de
+fermeture generale. Le detail transactionnel vit dans `../chat/README.md`.
+
 ## Etat d'implementation
 
-Le handshake, l'authentification one-shot, les quatre commandes de l'etape 3, le registre borne, les
-token buckets, la file serie bornee, le controle `bufferedAmount`, Ping/Pong, presence et drainage
-sont implementes. Les types chat/E2EE et les commandes de moderation restent volontairement absents
-du parseur jusqu'a leurs transactions et politiques respectives.
+Le handshake, l'authentification one-shot, les commandes des etapes 3 et 4, le registre borne, les
+token buckets, la file serie bornee, le controle `bufferedAmount`, Ping/Pong, presence, chat durable
+et drainage sont implementes. Les commandes MLS et de moderation restent volontairement absentes du
+parseur jusqu'a leurs transactions et politiques respectives.
 
 Preuves automatisees : `tests/realtime.test.ts`, `tests/realtime-tickets.test.ts`,
-`tests/presence.test.ts` et `tests/sessions.test.ts`. Le test de handshake ouvre un vrai serveur
-`ws` et verifie refus de query, origine inconnue et processus non ready.
+`tests/presence.test.ts`, `tests/chat.test.ts`, `tests/realtime.asyncapi.test.ts` et
+`tests/sessions.test.ts`. Les tests ouvrent un vrai serveur `ws`, verifient les refus de handshake
+et executent un parcours chat authentifie contre PostgreSQL et Redis reels.
 
 ## Codes de fermeture applicatifs
 

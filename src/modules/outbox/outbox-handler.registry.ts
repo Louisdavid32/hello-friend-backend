@@ -28,4 +28,9 @@ export class OutboxHandlerRegistry {
   public get(destination: OutboxDestination): OutboxHandler | undefined {
     return this.handlers.get(destination);
   }
+
+  /** Returns a stable allow-list of destinations this process can actually publish. */
+  public destinations(): readonly OutboxDestination[] {
+    return [...this.handlers.keys()];
+  }
 }

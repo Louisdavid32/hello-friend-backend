@@ -1,46 +1,85 @@
 import { z } from "zod";
 
 import { ApplicationError } from "../../platform/errors/index.js";
+import {
+  chatSubmitPayloadSchema,
+  chatSubscriptionPayloadSchema,
+  chatSyncPayloadSchema,
+} from "../chat/index.js";
 import type { RealtimeClientMessage, RealtimeServerMessage } from "./realtime-protocol.types.js";
 
 const base = {
   v: z.literal(1),
   id: z.uuid(),
 };
-const clientMessageSchema = z.discriminatedUnion("type", [
-  z
-    .object({
-      ...base,
-      type: z.literal("session.authenticate"),
-      payload: z
-        .object({
-          ticket: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
-          deviceBinding: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
-        })
-        .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      ...base,
-      type: z.literal("room.subscribe"),
-      payload: z.object({}).strict(),
-    })
-    .strict(),
-  z
-    .object({
-      ...base,
-      type: z.literal("presence.heartbeat"),
-      payload: z.object({ lastRevision: z.string().regex(/^\d+$/u).optional() }).strict(),
-    })
-    .strict(),
-  z
-    .object({
-      ...base,
-      type: z.literal("ping"),
-      payload: z.object({ clientTimeMs: z.number().int().nonnegative().optional() }).strict(),
-    })
-    .strict(),
+
+/** Runtime schema for the first authenticated WebSocket command. */
+export const sessionAuthenticateMessageSchema = z
+  .object({
+    ...base,
+    type: z.literal("session.authenticate"),
+    payload: z
+      .object({
+        ticket: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
+        deviceBinding: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
+      })
+      .strict(),
+  })
+  .strict();
+
+/** Runtime schema for room presence and optional chat catch-up subscription. */
+export const roomSubscribeMessageSchema = z
+  .object({
+    ...base,
+    type: z.literal("room.subscribe"),
+    payload: z.object({ chat: chatSubscriptionPayloadSchema.optional() }).strict(),
+  })
+  .strict();
+
+/** Runtime schema for durable encrypted message submission. */
+export const chatSubmitMessageSchema = z
+  .object({
+    ...base,
+    type: z.literal("chat.message.submit"),
+    payload: chatSubmitPayloadSchema,
+  })
+  .strict();
+
+/** Runtime schema for forward durable chat repair. */
+export const chatSyncMessageSchema = z
+  .object({
+    ...base,
+    type: z.literal("chat.sync.request"),
+    payload: chatSyncPayloadSchema,
+  })
+  .strict();
+
+/** Runtime schema for application-level presence heartbeat. */
+export const presenceHeartbeatMessageSchema = z
+  .object({
+    ...base,
+    type: z.literal("presence.heartbeat"),
+    payload: z.object({ lastRevision: z.string().regex(/^\d+$/u).optional() }).strict(),
+  })
+  .strict();
+
+/** Runtime schema for request/reply latency and connection checks. */
+export const pingMessageSchema = z
+  .object({
+    ...base,
+    type: z.literal("ping"),
+    payload: z.object({ clientTimeMs: z.number().int().nonnegative().optional() }).strict(),
+  })
+  .strict();
+
+/** Complete discriminated union accepted by realtime protocol version one. */
+export const realtimeClientMessageSchema = z.discriminatedUnion("type", [
+  sessionAuthenticateMessageSchema,
+  roomSubscribeMessageSchema,
+  chatSubmitMessageSchema,
+  chatSyncMessageSchema,
+  presenceHeartbeatMessageSchema,
+  pingMessageSchema,
 ]);
 
 /** Strictly parses a complete UTF-8 JSON command envelope. */
@@ -51,7 +90,7 @@ export function parseRealtimeClientMessage(serialized: string): RealtimeClientMe
   } catch {
     throw invalidFrame();
   }
-  const parsed = clientMessageSchema.safeParse(decoded);
+  const parsed = realtimeClientMessageSchema.safeParse(decoded);
   if (!parsed.success) throw invalidFrame();
   return parsed.data;
 }

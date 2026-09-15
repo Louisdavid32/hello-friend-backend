@@ -20,10 +20,13 @@ export class OutboxRelay {
   /** Claims and processes at most one configured batch for this worker. */
   public async runOnce(workerId: string, signal: AbortSignal): Promise<number> {
     if (signal.aborted) return 0;
+    const destinations = this.handlers.destinations();
+    if (destinations.length === 0) return 0;
     const deliveries = await this.repository.claimBatch(
       workerId,
       this.config.outbox.batchSize,
       this.config.outbox.leaseMs,
+      destinations,
     );
 
     for (let offset = 0; offset < deliveries.length; offset += this.config.outbox.concurrency) {

@@ -11,6 +11,7 @@ describe("RedisKeyspace", () => {
       `hf:v1:presence:{${meetingId}}:connections`,
     );
     expect(keys.meetingRealtimeChannel(meetingId)).toBe(`hf:v1:rt:{${meetingId}}`);
+    expect(keys.meetingChatChannel(meetingId)).toBe(`hf:v1:chat:{${meetingId}}`);
     expect(keys.realtimeTicket("a".repeat(64))).toBe(`hf:v1:ticket:{${"a".repeat(64)}}`);
   });
 

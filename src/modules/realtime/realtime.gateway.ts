@@ -7,6 +7,14 @@ import WebSocket, { type RawData } from "ws";
 import { APPLICATION_CONFIG, type ApplicationConfig } from "../../platform/config/index.js";
 import { ApplicationError } from "../../platform/errors/index.js";
 import { StructuredLogger } from "../../platform/observability/index.js";
+import {
+  ChatFanoutService,
+  ChatLiveCursor,
+  ManageChatUseCase,
+  parseSubmitChatMessage,
+  type ChatPage,
+  type ChatRealtimeNotification,
+} from "../chat/index.js";
 import { PresenceService, toPresenceConnection } from "../presence/index.js";
 import { ManageRealtimeTicketUseCase } from "../realtime-tickets/index.js";
 import { AuthenticateSessionUseCase, type SessionPrincipal } from "../sessions/index.js";
@@ -37,6 +45,8 @@ export class RealtimeGateway implements OnModuleInit, OnModuleDestroy {
     @Inject(ManageRealtimeTicketUseCase) private readonly tickets: ManageRealtimeTicketUseCase,
     @Inject(AuthenticateSessionUseCase) private readonly sessions: AuthenticateSessionUseCase,
     @Inject(PresenceService) private readonly presence: PresenceService,
+    @Inject(ManageChatUseCase) private readonly chat: ManageChatUseCase,
+    @Inject(ChatFanoutService) private readonly chatFanout: ChatFanoutService,
     @Inject(StructuredLogger) private readonly logger: StructuredLogger,
     @Inject(APPLICATION_CONFIG) private readonly config: ApplicationConfig,
   ) {}
@@ -137,14 +147,59 @@ export class RealtimeGateway implements OnModuleInit, OnModuleDestroy {
     switch (message.type) {
       case "room.subscribe": {
         const snapshot = await this.presence.snapshot(principal.meetingId);
+        const chatSubscription =
+          message.payload.chat === undefined
+            ? undefined
+            : await this.prepareChatSubscription(socket, context, principal, message.payload.chat);
         this.sendReliable(
           socket,
           realtimeResult(message.id, "room.snapshot", {
             meetingId: principal.meetingId,
             mode: principal.meetingMode,
             presence: snapshot,
+            chat:
+              chatSubscription === undefined
+                ? { status: "not_requested" }
+                : { status: "available", ...chatSubscription.page },
           }),
         );
+        chatSubscription?.activate();
+        return;
+      }
+      case "chat.message.submit": {
+        this.assertChatEnabled();
+        const command = parseSubmitChatMessage(message.payload, principal, this.config.chat);
+        const accepted = await this.chat.accept(command);
+        this.sendReliable(
+          socket,
+          realtimeResult(message.id, "chat.message.accepted", {
+            clientMessageId: accepted.message.clientMessageId,
+            messageId: accepted.message.messageId,
+            position: accepted.message.position,
+            createdAt: accepted.message.createdAt,
+            replayed: accepted.replayed,
+          }),
+        );
+        await this.chat.publishFastPath(accepted);
+        return;
+      }
+      case "chat.sync.request": {
+        this.assertChatEnabled();
+        if (context.chatCursor === undefined || context.chatDeviceId !== message.payload.deviceId) {
+          throw new ApplicationError(
+            "CHAT_SUBSCRIPTION_REQUIRED",
+            "authorization",
+            "Subscribe this E2EE device to the room before requesting chat synchronization.",
+          );
+        }
+        const page = await this.chat.synchronize({
+          principal,
+          deviceId: message.payload.deviceId,
+          afterPosition: message.payload.afterPosition,
+          limit: message.payload.limit ?? this.config.chat.historyPageDefault,
+        });
+        this.sendReliable(socket, realtimeResult(message.id, "chat.sync.page", { ...page }));
+        context.chatCursor.advance(page.nextAfterPosition);
         return;
       }
       case "presence.heartbeat": {
@@ -301,6 +356,9 @@ export class RealtimeGateway implements OnModuleInit, OnModuleDestroy {
       code: applicationError.code,
       message: applicationError.message,
       retryable,
+      ...(applicationError.safeDetails === undefined
+        ? {}
+        : { details: applicationError.safeDetails }),
     };
     const sent = this.sender.send(
       socket,
@@ -312,6 +370,7 @@ export class RealtimeGateway implements OnModuleInit, OnModuleDestroy {
       closeSocket(socket, 1013, "slow_consumer");
       return;
     }
+    if (applicationError.code.startsWith("CHAT_")) return;
     if (applicationError.kind === "authentication") {
       closeSocket(
         socket,
@@ -333,6 +392,90 @@ export class RealtimeGateway implements OnModuleInit, OnModuleDestroy {
     if (!this.sender.send(socket, message)) closeSocket(socket, 1013, "slow_consumer");
   }
 
+  private async prepareChatSubscription(
+    socket: WebSocket,
+    context: RealtimeConnectionContext,
+    principal: SessionPrincipal,
+    request: {
+      readonly deviceId: string;
+      readonly afterPosition?: string | undefined;
+      readonly limit?: number | undefined;
+    },
+  ): Promise<{ readonly page: ChatPage; readonly activate: () => void }> {
+    this.assertChatEnabled();
+    await context.unwatchChat?.();
+    delete context.unwatchChat;
+    delete context.chatCursor;
+    delete context.chatDeviceId;
+
+    const pending: ChatRealtimeNotification[] = [];
+    let cursor: ChatLiveCursor | undefined;
+    let active = false;
+    let overflowed = false;
+    const listener = (notification: ChatRealtimeNotification): void => {
+      if (!active || cursor === undefined) {
+        if (pending.length >= this.config.chat.reorderBufferMessages) {
+          overflowed = true;
+          closeSocket(socket, 1013, "chat_resync_required");
+          return;
+        }
+        pending.push(notification);
+        return;
+      }
+      cursor.accept(notification);
+    };
+    const unwatch = await this.chatFanout.watch(principal.meetingId, listener);
+    try {
+      const page = await this.chat.synchronize({
+        principal,
+        deviceId: request.deviceId,
+        afterPosition: request.afterPosition ?? "0",
+        limit: request.limit ?? this.config.chat.historyPageDefault,
+      });
+      cursor = this.createChatCursor(socket, page.highWatermark);
+      context.unwatchChat = unwatch;
+      context.chatDeviceId = request.deviceId;
+      context.chatCursor = cursor;
+      return {
+        page,
+        activate: () => {
+          if (active || overflowed) return;
+          active = true;
+          for (const notification of pending) cursor?.accept(notification);
+          pending.length = 0;
+        },
+      };
+    } catch (error) {
+      await unwatch();
+      throw error;
+    }
+  }
+
+  private createChatCursor(socket: WebSocket, position: string): ChatLiveCursor {
+    return new ChatLiveCursor(position, this.config.chat.reorderBufferMessages, {
+      deliver: (message) => {
+        this.sendReliable(socket, realtimeEvent("chat.message.created", { ...message }));
+      },
+      gap: (highWatermark) => {
+        this.sendReliable(
+          socket,
+          realtimeEvent("room.high_watermark", { position: highWatermark }),
+        );
+      },
+      overflow: () => closeSocket(socket, 1013, "chat_resync_required"),
+    });
+  }
+
+  private assertChatEnabled(): void {
+    if (!this.config.chat.enabled) {
+      throw new ApplicationError(
+        "CHAT_DISABLED",
+        "authorization",
+        "Encrypted chat is disabled for this deployment.",
+      );
+    }
+  }
+
   private async cleanup(socket: WebSocket): Promise<void> {
     const context = this.registry.remove(socket);
     if (context === undefined) return;
@@ -340,6 +483,7 @@ export class RealtimeGateway implements OnModuleInit, OnModuleDestroy {
     const principal = context.principal;
     await Promise.allSettled([
       context.unwatchPresence?.() ?? Promise.resolve(),
+      context.unwatchChat?.() ?? Promise.resolve(),
       principal === undefined
         ? Promise.resolve()
         : this.presence.close(principal.meetingId, principal.sessionId, context.connectionId),

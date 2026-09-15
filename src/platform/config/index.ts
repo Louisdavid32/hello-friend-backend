@@ -2,6 +2,7 @@ export { APP_ROLES, LOG_LEVELS, NODE_ENVIRONMENTS } from "./application-config.j
 export type {
   ApplicationConfig,
   AppRole,
+  ChatConfig,
   DatabaseConfig,
   DocumentationConfig,
   HealthConfig,

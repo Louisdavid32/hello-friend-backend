@@ -1,4 +1,5 @@
 import type { SessionPrincipal } from "../sessions/index.js";
+import type { ChatLiveCursor } from "../chat/index.js";
 
 /** Client command envelope accepted by realtime protocol v1. */
 export type RealtimeClientMessage =
@@ -12,7 +13,39 @@ export type RealtimeClientMessage =
       readonly v: 1;
       readonly id: string;
       readonly type: "room.subscribe";
-      readonly payload: Record<string, never>;
+      readonly payload: {
+        readonly chat?:
+          | {
+              readonly deviceId: string;
+              readonly afterPosition?: string | undefined;
+              readonly limit?: number | undefined;
+            }
+          | undefined;
+      };
+    }
+  | {
+      readonly v: 1;
+      readonly id: string;
+      readonly type: "chat.message.submit";
+      readonly payload: {
+        readonly clientMessageId: string;
+        readonly deviceId: string;
+        readonly groupId: string;
+        readonly epoch: string;
+        readonly protocolVersion: 1;
+        readonly contentType: "text" | "reaction" | "receipt";
+        readonly ciphertext: string;
+      };
+    }
+  | {
+      readonly v: 1;
+      readonly id: string;
+      readonly type: "chat.sync.request";
+      readonly payload: {
+        readonly deviceId: string;
+        readonly afterPosition: string;
+        readonly limit?: number | undefined;
+      };
     }
   | {
       readonly v: 1;
@@ -63,6 +96,12 @@ export interface RealtimeConnectionContext {
   authenticationTimer?: NodeJS.Timeout;
   /** Idempotent distributed-presence unsubscriber. */
   unwatchPresence?: () => Promise<void>;
+  /** Idempotent meeting-scoped chat fan-out unsubscriber. */
+  unwatchChat?: () => Promise<void>;
+  /** Public E2EE device selected for this socket's chat history. */
+  chatDeviceId?: string;
+  /** Ordered bounded live-delivery cursor created after durable catch-up. */
+  chatCursor?: ChatLiveCursor;
   /** True after close cleanup has begun. */
   closed: boolean;
 }

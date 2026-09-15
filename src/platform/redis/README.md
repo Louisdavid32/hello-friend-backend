@@ -16,14 +16,18 @@ subscriber Pub/Sub doivent rester ouverts lorsqu'aucune donnee ne circule. Les s
 toutes leurs cles et utilisent un seul hash slot. Aucun lock Redis ne protege un invariant
 PostgreSQL.
 
-Le keyspace `hf:v1` valide UUID et digests. Toute nouvelle famille documente type Redis, TTL, owner,
-hash tag, taille maximale et comportement de panne.
+Le keyspace `hf:v1` valide UUID et digests. La presence utilise `hf:v1:rt:{meetingId}` et le chat
+durable utilise un canal distinct `hf:v1:chat:{meetingId}` afin que la coalescence presence ne
+touche jamais un message. Les quotas chat utilisent seulement un SHA-256 du couple
+reunion/participant. Toute nouvelle famille documente type Redis, TTL, owner, hash tag, taille
+maximale et comportement de panne.
 
 Pub/Sub est une notification at-most-once. Les donnees fonctionnelles durables doivent posseder un
 chemin de rattrapage PostgreSQL.
 
-Preuves : `tests/redis-connections.test.ts`, `tests/redis-keyspace.test.ts` et futurs tests Redis
-Cluster de tickets/presence.
+Preuves : `tests/redis-connections.test.ts`, `tests/redis-keyspace.test.ts`,
+`tests/integration/realtime-redis.integration.test.ts` pour tickets, presence, chat et quota, puis
+futurs tests Redis Cluster/failover.
 
 References :
 [Redis security](https://redis.io/docs/latest/operate/oss_and_stack/management/security/),

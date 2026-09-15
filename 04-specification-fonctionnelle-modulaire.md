@@ -1,8 +1,8 @@
 # Specification fonctionnelle modulaire
 
-Statut : baseline fonctionnelle v1 ; etape 3 implementee et qualifiee sur PostgreSQL 18/Redis 8
+Statut : baseline fonctionnelle v1 ; etape 4 implementee et qualifiee sur PostgreSQL 18/Redis 8
 autonome. La qualification Redis Cluster et preproduction reste une gate de deploiement. Date de
-revue : 2026-09-14. Portee : backend applicatif Hello Friend, sans modifier le frontend ni le SFU.
+revue : 2026-09-15. Portee : backend applicatif Hello Friend, sans modifier le frontend ni le SFU.
 
 ## 1. Objet et regles de lecture
 
@@ -20,7 +20,8 @@ Chaque exigence porte un identifiant stable. Les statuts ont un sens strict :
 | Statut        | Signification                                                                          |
 | ------------- | -------------------------------------------------------------------------------------- |
 | `IMPLEMENTE`  | code et tests automatises existent ; une preuve d'infrastructure peut rester explicite |
-| `ETAPE_3`     | inclus dans le lot WSS actuellement construit                                          |
+| `ETAPE_3`     | contrat provenant du lot WSS precedent                                                 |
+| `ETAPE_4`     | inclus dans le lot chat durable actuellement construit                                 |
 | `PLANIFIE`    | specifie mais pas encore disponible dans le produit                                    |
 | `BLOQUE_GATE` | interdit tant qu'une preuve de securite ou d'integration manque                        |
 
@@ -52,7 +53,7 @@ controlables par la personne.
 | GF-007 | un evenement durable n'est pas remplace par une notification Redis volatile              | `IMPLEMENTE`                                             |
 | GF-008 | une panne est annoncee comme inconnue ou degradee, jamais comme un faux succes           | `IMPLEMENTE`                                             |
 | GF-009 | les secrets, contenus clairs et identifiants bruts n'entrent pas dans les metriques      | `IMPLEMENTE`                                             |
-| GF-010 | chaque fonctionnalite possede contrat, tests, metriques et comportement de rollback      | `ETAPE_3`                                                |
+| GF-010 | chaque fonctionnalite possede contrat, tests, metriques et comportement de rollback      | `ETAPE_4`                                                |
 
 ## 3. Acteurs et droits
 
@@ -142,7 +143,7 @@ de limiter l'enumeration. Le nom n'est jamais une identite.
 | GF-042 | le client applique un backoff exponentiel tronque avec full jitter                               | `ETAPE_3` contrat frontend |
 | GF-043 | la presence peut devenir `unknown` pendant la coupure, jamais faussement `offline`               | `IMPLEMENTE` backend       |
 | GF-044 | le prochain abonnement fournit un snapshot canonique                                             | `IMPLEMENTE` backend       |
-| GF-045 | le futur chat reprend apres le dernier curseur durable sans trou                                 | `PLANIFIE`                 |
+| GF-045 | le chat reprend apres le dernier curseur durable sans trou                                       | `IMPLEMENTE` backend       |
 | GF-046 | micro et camera restent dans leur dernier choix local et ne se rallument jamais automatiquement  | `PLANIFIE` frontend/SFU    |
 
 ## 6. Modes de reunion
@@ -291,8 +292,8 @@ public ; jamais le frame recu.
 - une seule commande traitee a la fois par socket dans v1 ;
 - file entrante et file sortante bornees ;
 - `bufferedAmount` mesure avant tout envoi ;
-- presence et QoS sont coalescables ; l'etape 3 abandonne seulement une notification de revision
-  reparable par snapshot ;
+- presence et QoS sont coalescables ; un message chat durable n'est jamais supprime silencieusement
+  et reste reparable par curseur ;
 - un resultat fiable impossible a ecrire provoque une fermeture `1013` ;
 - tous timers/listeners sont liberes a la fermeture.
 
@@ -314,7 +315,58 @@ seulement apres expiration ou fermeture observee.
 | PR-007 | une panne Redis rend la presence inconnue sans fermer les sockets deja authentifies    | `IMPLEMENTE`                           |
 | PR-008 | revocation retrouve les connexions d'une session ; la commande de revocation les ferme | index `IMPLEMENTE`, commande planifiee |
 
-## 10. Resilience adaptee aux usages mobiles en Afrique
+## 10. Chat durable chiffre
+
+Le chat de l'etape 4 transporte uniquement des ciphertexts. Le backend connait les metadonnees de
+routage, mais ne peut pas lire le texte, une reaction ou un recu. Les identifiants de reunion et
+d'emetteur viennent de la session WSS ; le client ne choisit jamais la salle destinataire.
+
+| ID       | Exigence                                                                | Statut                           |
+| -------- | ----------------------------------------------------------------------- | -------------------------------- |
+| CHAT-001 | valider version, type, taille et base64url canonique avant SQL          | `IMPLEMENTE`                     |
+| CHAT-002 | revalider session, role, appareil public, groupe, appartenance et epoch | `IMPLEMENTE`                     |
+| CHAT-003 | appliquer politique d'ecriture, types, quota et slow mode cote serveur  | `IMPLEMENTE`                     |
+| CHAT-004 | idempotence stricte sans nouvelle position pour un retry identique      | `IMPLEMENTE`                     |
+| CHAT-005 | position monotone sans trou de commit dans une reunion                  | `IMPLEMENTE`, concurrence testee |
+| CHAT-006 | message et outbox atomiques, aucun ACK avant commit                     | `IMPLEMENTE`                     |
+| CHAT-007 | voie rapide Redis apres ACK et reprise worker apres lease               | `IMPLEMENTE`                     |
+| CHAT-008 | subscription avant catch-up, fusion, deduplication et reorder bornes    | `IMPLEMENTE`                     |
+| CHAT-009 | pagination avant jusqu'au watermark avec fenetre d'appartenance         | `IMPLEMENTE`                     |
+| CHAT-010 | retention par lots sans bloquer les commits                             | `IMPLEMENTE`                     |
+| CHAT-011 | contrat WebSocket machine lisible                                       | `IMPLEMENTE` via AsyncAPI 3      |
+| CHAT-012 | creation cryptographique des groupes, Welcome et rotations MLS          | `BLOQUE_GATE` G-02, etape 7      |
+| CHAT-013 | suppression visible, moderation et tombstone chiffres                   | `PLANIFIE`                       |
+
+### 10.1 Envoi et reception
+
+Apres `room.subscribe.chat`, le participant envoie `chat.message.submit` avec une cle d'idempotence,
+son appareil public, le groupe, l'epoch et le ciphertext. `chat.message.accepted` confirme seulement
+la durabilite. Les sockets autorises recoivent `chat.message.created`; un doublon de fan-out est
+ignore par position/event ID. `chat.sync.request` retourne les pages manquees et le watermark.
+
+Le mode visio/audio accepte par defaut hote et participants selon politique. Le live peut autoriser
+tous les viewers, seulement hote/presenters, seulement l'hote ou personne. `contentTypes` distingue
+`text`, `reaction` et `receipt`, tandis que leur contenu reste chiffre. Le slow mode durable est
+applique sous le verrou de reunion et ne se contourne pas par reconnexion.
+
+### 10.2 Historique et confidentialite
+
+`strict_membership` masque toute position anterieure a la jointure et toute epoch hors de la fenetre
+d'appartenance de l'appareil. `shared_history` reste inactive tant qu'un membre ne fournit pas
+volontairement une enveloppe de cles auditee ; le serveur ne fabrique jamais cette cle.
+
+La creation/jointure actuelle laisse les participants `pending_key_sync`. Par consequent, le
+transport chat est implemente mais un parcours produit ordinaire recoit `CHAT_KEY_SYNC_REQUIRED`
+jusqu'a l'implementation du cycle MLS de l'etape 7. Aucun fallback en clair n'est autorise.
+
+### 10.3 Pannes et clients mobiles
+
+Redis Pub/Sub peut perdre une notification. PostgreSQL reste la source durable ; les heads
+periodiques signalent un trou et le client reprend par pages. Un client lent est ferme en `1013`
+avec son dernier curseur contigu, puis se reconnecte avec jitter et ticket neuf. Les pages et
+buffers bornes evitent un gros rattrapage en une seule allocation sur reseau lent.
+
+## 11. Resilience adaptee aux usages mobiles en Afrique
 
 Les rapports ITU/GSMA montrent des contraintes persistantes de cout, de qualite, de couverture et
 d'energie. Elles motivent les innovations suivantes sans reduire la securite :
@@ -344,36 +396,37 @@ d'energie. Elles motivent les innovations suivantes sans reduire la securite :
 Les heuristiques `saveData`, RTT ou type de reseau du navigateur ne deviennent jamais une
 autorisation et restent facultatives car leur disponibilite varie.
 
-## 11. Degradation et messages fonctionnels
+## 12. Degradation et messages fonctionnels
 
 | Panne                       | Comportement attendu                                                      |
 | --------------------------- | ------------------------------------------------------------------------- |
 | PostgreSQL indisponible     | aucune session/ticket nouveau ; pas de faux ack                           |
 | Redis tickets indisponible  | emission et nouvelle authentification WSS refusees                        |
 | Redis presence indisponible | sockets actives continuent, statut `unknown`, readiness degradee          |
-| Pub/Sub perdu               | snapshot/catch-up repare ; aucune garantie durable fondee sur Pub/Sub     |
+| Redis chat indisponible     | commit/ACK SQL possibles, fan-out retente et catch-up par curseur         |
+| Pub/Sub perdu               | watermark/catch-up repare ; aucune garantie durable fondee sur Pub/Sub    |
 | client lent                 | coalescence, avertissement, fermeture bornee, puis reprise                |
 | coupure mobile              | reconnexion avec jitter et nouveau ticket                                 |
 | session revoquee            | ticket refuse, sockets fermees, admission SFU revoquee plus tard          |
 | processus en drain          | aucun nouvel upgrade/ticket, sockets averties puis fermees avant deadline |
 
-## 12. Catalogue des modules et statut
+## 13. Catalogue des modules et statut
 
-| Module             | Responsabilite                                | Statut apres implementation de l'etape 3                        |
+| Module             | Responsabilite                                | Statut apres implementation de l'etape 4                        |
 | ------------------ | --------------------------------------------- | --------------------------------------------------------------- |
 | `capabilities`     | HMAC et rotation des secrets                  | implemente                                                      |
 | `meetings`         | create/join et politiques de reunion          | create/join implementes, cycle complet planifie                 |
 | `sessions`         | authentification et rotation de session       | authentification/revalidation implementees ; rotation planifiee |
 | `realtime-tickets` | emission/consommation WSS one-shot            | implemente, concurrence prouvee sur Redis 8 autonome            |
-| `realtime`         | handshake, protocole, limites, registre local | implemente pour commandes etape 3                               |
+| `realtime`         | handshake, protocole, limites, registre local | commandes etapes 3/4 implementees                               |
 | `presence`         | etat ephemere Redis multi-instance            | implemente sur Redis 8 ; qualification Cluster encore requise   |
-| `outbox`           | livraison durable apres commit                | moteur implemente, destinations futures                         |
-| `chat`             | ciphertext durable et rattrapage              | etape 4                                                         |
+| `outbox`           | livraison durable apres commit                | moteur, worker et handler Redis chat implementes                |
+| `chat`             | ciphertext durable et rattrapage              | etape 4 implementee ; provisioning MLS bloque etape 7           |
 | `sfu-admission`    | JWT/JWKS et profils                           | etape 5                                                         |
 | `sfu-control`      | terminer/revoquer via contrat SFU             | etape 6 et gate G-01                                            |
 | `e2ee`             | credentials, MLS et SFrame                    | etape 7 et gates G-02/G-03                                      |
 
-## 13. Definition de fini par module
+## 14. Definition de fini par module
 
 Un module n'est fini que si :
 
@@ -387,9 +440,9 @@ Un module n'est fini que si :
 - les tests reels necessaires sont executes sur les versions ciblees ;
 - le statut `IMPLEMENTE` est coherent entre ce document, README et code.
 
-## 14. Scenarios d'acceptation produit
+## 15. Scenarios d'acceptation produit
 
-### 14.1 Visioconference de cours
+### 15.1 Visioconference de cours
 
 L'hote cree et partage ; deux invites rejoignent ; chacun choisit ses appareils. L'hote coupe le
 micro d'un participant perturbateur. Le droit audio est bloque, le producer SFU est ferme, la
@@ -397,25 +450,25 @@ personne est avertie et ne peut pas republier. Une restauration du droit n'allum
 Apres consentement local, elle peut parler. Une coupure reseau reprend la meme identite et l'etat
 canonique.
 
-### 14.2 Appel audio
+### 15.2 Appel audio
 
 Deux participants rejoignent sans permission camera. Audio et chat optionnel fonctionnent. La perte
 de bande passante ne provoque aucun chargement video. Le changement d'IP mobile renouvelle ticket et
 WSS sans creer de compte.
 
-### 14.3 Live
+### 15.3 Live
 
 L'hote publie, promeut un presenter et accueille une rafale de viewers. Aucun viewer ne peut creer
 de producer. Le slow mode limite le chat. Un viewer lent est degrade ou reconnecte sans ralentir le
 diffuseur ni les autres viewers.
 
-### 14.4 Securite realtime
+### 15.4 Securite realtime
 
 Un ticket rejoue simultanement sur deux sockets authentifie exactement un seul. Une origine
 inconnue, query contenant un token, frame binaire, payload trop gros, commande inconnue ou flood est
 refuse sans secret dans les logs.
 
-## 15. References officielles et implementations comparees
+## 16. References officielles et implementations comparees
 
 Les references orientent les invariants ; aucune architecture externe n'est copiee telle quelle.
 

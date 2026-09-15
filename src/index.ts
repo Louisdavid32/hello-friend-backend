@@ -11,6 +11,7 @@
 export * from "./platform/config/index.js";
 export * from "./modules/outbox/index.js";
 export * from "./modules/capabilities/index.js";
+export * from "./modules/chat/index.js";
 export * from "./modules/meetings/index.js";
 export * from "./modules/presence/index.js";
 export * from "./modules/realtime-tickets/index.js";

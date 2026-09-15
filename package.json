@@ -29,6 +29,7 @@
     "start:migration": "node dist/apps/migration/bootstrap.js",
     "test": "vitest run",
     "test:integration": "vitest run tests/integration/infrastructure.integration.test.ts",
+    "test:integration:chat": "vitest run tests/integration/chat-postgres.integration.test.ts",
     "test:integration:redis": "vitest run tests/integration/realtime-redis.integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

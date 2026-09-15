@@ -7,6 +7,12 @@ import WebSocket from "ws";
 import { describe, expect, it, vi } from "vitest";
 
 import type { PresenceService } from "../src/modules/presence/index.js";
+import type {
+  ChatFanoutService,
+  ChatMessage,
+  ChatRealtimeListener,
+  ManageChatUseCase,
+} from "../src/modules/chat/index.js";
 import type { ManageRealtimeTicketUseCase } from "../src/modules/realtime-tickets/index.js";
 import {
   parseRealtimeClientMessage,
@@ -21,12 +27,14 @@ import {
 import type { AuthenticateSessionUseCase } from "../src/modules/sessions/index.js";
 import { loadApplicationConfig } from "../src/platform/config/index.js";
 import type { ApplicationConfig } from "../src/platform/config/index.js";
+import { ApplicationError } from "../src/platform/errors/index.js";
 import type { StructuredLogger } from "../src/platform/observability/index.js";
 
 const meetingId = "018f5f87-5c7a-7abc-8def-0123456789ab";
 const participantId = "018f5f87-5c7a-7abc-8def-0123456789ac";
 const sessionId = "018f5f87-5c7a-7abc-8def-0123456789ad";
 const commandId = "018f5f87-5c7a-7abc-8def-0123456789ae";
+const deviceId = "018f5f87-5c7a-7abc-8def-0123456789b6";
 const ticket = Buffer.alloc(32, 101).toString("base64url");
 const deviceBinding = Buffer.alloc(32, 102).toString("base64url");
 
@@ -61,6 +69,21 @@ function config(overrides: NodeJS.ProcessEnv = {}): ApplicationConfig {
   return loadApplicationConfig("realtime", {
     REALTIME_AUTH_TIMEOUT_MS: "1000",
     ...overrides,
+  });
+}
+
+function enabledChatConfig(): ApplicationConfig {
+  const capabilityKey = Buffer.alloc(32, 103).toString("base64url");
+  const sessionKey = Buffer.alloc(32, 104).toString("base64url");
+  return config({
+    DATABASE_ENABLED: "true",
+    DATABASE_URL: "postgresql://local:local@127.0.0.1:5432/local",
+    REDIS_ENABLED: "true",
+    REDIS_URLS: "redis://127.0.0.1:6379/0",
+    MEETINGS_ENABLED: "true",
+    CAPABILITY_HMAC_KEYRING: JSON.stringify({ currentVersion: 1, keys: { "1": capabilityKey } }),
+    SESSION_HMAC_KEYRING: JSON.stringify({ currentVersion: 1, keys: { "1": sessionKey } }),
+    CHAT_ENABLED: "true",
   });
 }
 
@@ -155,6 +178,14 @@ describe("realtime protocol and transport", () => {
       heartbeat: vi.fn().mockResolvedValue(true),
       close: vi.fn().mockResolvedValue(undefined),
     };
+    const chat = {
+      synchronize: vi.fn(),
+      submit: vi.fn(),
+      publishAccepted: vi.fn(),
+    };
+    const chatFanout = {
+      watch: vi.fn(),
+    };
     const gateway = new RealtimeGateway(
       registry,
       new RealtimeMessageRateLimiter(cfg),
@@ -163,6 +194,8 @@ describe("realtime protocol and transport", () => {
       tickets as unknown as ManageRealtimeTicketUseCase,
       sessions as unknown as AuthenticateSessionUseCase,
       presence as unknown as PresenceService,
+      chat as unknown as ManageChatUseCase,
+      chatFanout as unknown as ChatFanoutService,
       { error: vi.fn() } as unknown as StructuredLogger,
       cfg,
     );
@@ -207,6 +240,156 @@ describe("realtime protocol and transport", () => {
     ]);
     await gateway.onModuleDestroy();
     expect(presence.close).toHaveBeenCalledOnce();
+  });
+
+  it("subscribes before chat catch-up, accepts ciphertext, then publishes after its ACK", async () => {
+    const cfg = enabledChatConfig();
+    const socket = new FakeSocket();
+    const registry = new RealtimeConnectionRegistry(cfg);
+    const tickets = { consume: vi.fn().mockResolvedValue(principal) };
+    const sessions = { revalidate: vi.fn().mockResolvedValue(principal) };
+    const presence = {
+      watch: vi.fn().mockResolvedValue(vi.fn().mockResolvedValue(undefined)),
+      open: vi.fn().mockResolvedValue(true),
+      snapshot: vi.fn().mockResolvedValue({
+        revision: "1",
+        status: "available",
+        participants: [],
+        truncated: false,
+      }),
+      heartbeat: vi.fn().mockResolvedValue(true),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const durableMessage: ChatMessage = {
+      eventId: "018f5f87-5c7a-7abc-8def-0123456789b1",
+      messageId: "018f5f87-5c7a-7abc-8def-0123456789b1",
+      meetingId,
+      senderParticipantId: participantId,
+      position: "1",
+      clientMessageId: "018f5f87-5c7a-7abc-8def-0123456789b2",
+      protocolVersion: 1,
+      groupId: "018f5f87-5c7a-7abc-8def-0123456789b3",
+      epoch: "2",
+      contentType: "text",
+      ciphertext: Buffer.from("opaque").toString("base64url"),
+      createdAt: new Date().toISOString(),
+    };
+    const accept = vi.fn().mockResolvedValue({ message: durableMessage, replayed: false });
+    const synchronize = vi.fn().mockResolvedValue({
+      messages: [],
+      nextAfterPosition: "0",
+      highWatermark: "0",
+      hasMore: false,
+    });
+    const publishFastPath = vi.fn(() => {
+      expect(socket.sent.map(readServerMessageType)).toContain("chat.message.accepted");
+      return Promise.resolve();
+    });
+    let chatListener: ChatRealtimeListener | undefined;
+    const unwatchChat = vi.fn().mockResolvedValue(undefined);
+    const watch = vi.fn((_meetingId: string, listener: ChatRealtimeListener) => {
+      chatListener = listener;
+      return Promise.resolve(unwatchChat);
+    });
+    const gateway = new RealtimeGateway(
+      registry,
+      new RealtimeMessageRateLimiter(cfg),
+      new RealtimeOutboundSender(cfg),
+      { resolveKey: vi.fn().mockReturnValue("source") } as unknown as WebSocketSourceAddress,
+      tickets as unknown as ManageRealtimeTicketUseCase,
+      sessions as unknown as AuthenticateSessionUseCase,
+      presence as unknown as PresenceService,
+      { accept, synchronize, publishFastPath } as unknown as ManageChatUseCase,
+      { watch } as unknown as ChatFanoutService,
+      { error: vi.fn() } as unknown as StructuredLogger,
+      cfg,
+    );
+    gateway.handleConnection(
+      socket as unknown as WebSocket,
+      {
+        headers: { origin: "http://localhost:5173" },
+        socket: { remoteAddress: "127.0.0.1" },
+      } as unknown as IncomingMessage,
+    );
+
+    emitCommand(socket, {
+      v: 1,
+      id: commandId,
+      type: "session.authenticate",
+      payload: { ticket, deviceBinding },
+    });
+    emitCommand(socket, {
+      v: 1,
+      id: "018f5f87-5c7a-7abc-8def-0123456789b4",
+      type: "room.subscribe",
+      payload: { chat: { deviceId, afterPosition: "0", limit: 20 } },
+    });
+    emitCommand(socket, {
+      v: 1,
+      id: "018f5f87-5c7a-7abc-8def-0123456789b5",
+      type: "chat.message.submit",
+      payload: {
+        clientMessageId: durableMessage.clientMessageId,
+        deviceId,
+        groupId: durableMessage.groupId,
+        epoch: durableMessage.epoch,
+        protocolVersion: 1,
+        contentType: "text",
+        ciphertext: durableMessage.ciphertext,
+      },
+    });
+    await vi.waitFor(() => expect(publishFastPath).toHaveBeenCalledOnce());
+
+    expect(watch).toHaveBeenCalledBefore(synchronize);
+    expect(accept).toHaveBeenCalledWith(
+      expect.objectContaining({
+        principal,
+        deviceId,
+        ciphertext: Buffer.from("opaque"),
+      }),
+    );
+    chatListener?.({ kind: "message", message: durableMessage });
+    expect(socket.sent.map(readServerMessageType)).toEqual([
+      "session.authenticated",
+      "room.snapshot",
+      "chat.message.accepted",
+      "chat.message.created",
+    ]);
+    expect(socket.closes).toEqual([]);
+
+    accept.mockRejectedValueOnce(
+      new ApplicationError("CHAT_E2EE_EPOCH_STALE", "conflict", "The epoch is stale.", {
+        currentEpoch: "3",
+      }),
+    );
+    emitCommand(socket, {
+      v: 1,
+      id: "018f5f87-5c7a-7abc-8def-0123456789b7",
+      type: "chat.message.submit",
+      payload: {
+        clientMessageId: "018f5f87-5c7a-7abc-8def-0123456789b8",
+        deviceId,
+        groupId: durableMessage.groupId,
+        epoch: durableMessage.epoch,
+        protocolVersion: 1,
+        contentType: "text",
+        ciphertext: durableMessage.ciphertext,
+      },
+    });
+    await vi.waitFor(() => expect(socket.sent.map(readServerMessageType)).toContain("error"));
+    expect(JSON.parse(socket.sent.at(-1) ?? "null")).toEqual(
+      expect.objectContaining({
+        type: "error",
+        payload: expect.objectContaining({
+          code: "CHAT_E2EE_EPOCH_STALE",
+          details: { currentEpoch: "3" },
+        }),
+      }),
+    );
+    expect(socket.closes).toEqual([]);
+
+    await gateway.onModuleDestroy();
+    expect(unwatchChat).toHaveBeenCalledOnce();
   });
 
   it("enforces exact network handshake origin, path, protocol, and readiness", async () => {
@@ -262,4 +445,8 @@ async function connect(
 function readServerMessageType(serialized: string): unknown {
   const value: unknown = JSON.parse(serialized);
   return typeof value === "object" && value !== null && "type" in value ? value.type : undefined;
+}
+
+function emitCommand(socket: FakeSocket, command: Readonly<Record<string, unknown>>): void {
+  socket.emit("message", Buffer.from(JSON.stringify(command)), false);
 }

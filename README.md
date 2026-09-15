@@ -18,7 +18,13 @@ L'etape 3 ajoute l'authentification complete des sessions, les tickets WSS a usa
 le handshake strict `/v1/realtime`, le protocole `hf-realtime.v1`, les limites par
 source/session/socket, le heartbeat, la backpressure, la presence Redis multi-instance et le
 drainage des sockets. Le backend applicatif ne transporte toujours aucun media et ne remplace pas le
-SFU.
+SFU. L'etape 4 ajoute le journal de chat chiffre, l'ordre par reunion, l'idempotence, les politiques
+d'ecriture et slow mode, la pagination par curseur/watermark, le fan-out Redis sharded, la reprise
+outbox, la retention bornee, les metriques et le contrat AsyncAPI 3.
+
+Cette etape ne fabrique aucune cle. Tant que l'etape 7 n'a pas provisionne le groupe MLS et active
+l'appareil, une session issue du parcours create/join normal reste `pending_key_sync` et le chat
+refuse en securite avec `CHAT_KEY_SYNC_REQUIRED`. Aucun fallback en clair n'existe.
 
 ## Prerequis
 
@@ -56,6 +62,10 @@ export REDIS_ENABLED=true
 export REDIS_URLS='redis://:hello_friend_redis_local_only@127.0.0.1:56379/0'
 export RUN_INFRASTRUCTURE_TESTS=true
 npm run test:integration
+npm run test:integration:chat
+
+export RUN_REDIS_INTEGRATION_TESTS=true
+npm run test:integration:redis
 ```
 
 Le processus `migration` utilise uniquement `DATABASE_DIRECT_URL[_FILE]` et force un pool de taille
@@ -101,6 +111,12 @@ Le ticket n'est place ni dans l'URL ni dans le sous-protocole. Un ticket perdu o
 remplace par une nouvelle requete HTTP ; il n'est jamais rejoue. Les limites et TTL sont documentes
 dans `.env.example`.
 
+Activer `CHAT_ENABLED=true` sur `realtime` et `worker` pour le chat. Le realtime exige aussi
+`MEETINGS_ENABLED=true`; le worker utilise PostgreSQL/Redis sans charger les keyrings HMAC HTTP. Les
+commandes `room.subscribe.chat`, `chat.message.submit` et `chat.sync.request`, ainsi que tous leurs
+resultats et evenements, sont decrites dans `/asyncapi.json` en developpement/test et dans
+`src/modules/chat/README.md`.
+
 ## Documentation
 
 - `01-cadrage-backend-temps-reel.md`
@@ -108,11 +124,13 @@ dans `.env.example`.
 - `03-modele-menaces-securite.md`
 - `04-specification-fonctionnelle-modulaire.md`
 - `05-rapport-validation-etape-3.md`
+- `06-rapport-validation-etape-4.md`
 - `src/modules/*/README.md`
 
 `npm run docs:check` bloque les API publiques non documentees. `npm run docs:code` genere le site
 TypeDoc dans `generated-docs/code`. En developpement et test, Swagger UI est servi sur `/docs` et le
-contrat OpenAPI sur `/openapi.json`; les deux sont desactives par defaut hors environnement local.
+contrat OpenAPI sur `/openapi.json`; le contrat WebSocket AsyncAPI est servi sur `/asyncapi.json`.
+Ces routes sont desactivees par defaut hors environnement local.
 
 Les commentaires TSDoc documentent les contrats et decisions non evidentes. Le projet ne commente
 pas chaque ligne: les commentaires redondants vieillissent avec le code et diminuent la lisibilite;

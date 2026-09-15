@@ -166,7 +166,63 @@ describe("loadApplicationConfig", () => {
         OPENAPI_PATH: "/contract",
         OPENAPI_JSON_PATH: "/contract",
       }),
-    ).toThrow("OPENAPI_PATH and OPENAPI_JSON_PATH must be different");
+    ).toThrow("OpenAPI and AsyncAPI publication paths must be different");
+    expect(() =>
+      loadApplicationConfig("realtime", {
+        OPENAPI_JSON_PATH: "/contracts",
+        ASYNCAPI_JSON_PATH: "/contracts",
+      }),
+    ).toThrow("OpenAPI and AsyncAPI publication paths must be different");
+  });
+
+  it("allows a worker to deliver chat without loading API meeting keyrings", () => {
+    const config = loadApplicationConfig("worker", {
+      NODE_ENV: "test",
+      DATABASE_ENABLED: "true",
+      DATABASE_URL: "postgresql://local:local@127.0.0.1:5432/local",
+      REDIS_ENABLED: "true",
+      REDIS_URLS: "redis://127.0.0.1:6379/0",
+      CHAT_ENABLED: "true",
+    });
+
+    expect(config.meetings.enabled).toBe(false);
+    expect(config.chat.enabled).toBe(true);
+  });
+
+  it("requires meeting authorization and both dependencies for realtime chat", () => {
+    expect(() =>
+      loadApplicationConfig("realtime", {
+        NODE_ENV: "test",
+        CHAT_ENABLED: "true",
+      }),
+    ).toThrow("CHAT_ENABLED requires MEETINGS_ENABLED on realtime processes");
+  });
+
+  it("rejects inconsistent chat page, quota, lease and frame budgets", () => {
+    expect(() =>
+      loadApplicationConfig("worker", {
+        CHAT_HISTORY_PAGE_DEFAULT: "201",
+        CHAT_HISTORY_PAGE_MAX: "200",
+      }),
+    ).toThrow("CHAT_HISTORY_PAGE_DEFAULT must not exceed CHAT_HISTORY_PAGE_MAX");
+    expect(() =>
+      loadApplicationConfig("worker", {
+        CHAT_RATE_PER_PARTICIPANT: "10",
+        CHAT_RATE_BURST: "9",
+      }),
+    ).toThrow("CHAT_RATE_BURST must be at least CHAT_RATE_PER_PARTICIPANT");
+    expect(() =>
+      loadApplicationConfig("worker", {
+        REDIS_COMMAND_TIMEOUT_MS: "2000",
+        CHAT_FAST_PATH_LEASE_MS: "2250",
+      }),
+    ).toThrow("CHAT_FAST_PATH_LEASE_MS must exceed REDIS_COMMAND_TIMEOUT_MS");
+    expect(() =>
+      loadApplicationConfig("worker", {
+        REALTIME_MAX_MESSAGE_BYTES: "4096",
+        CHAT_MAX_CIPHERTEXT_BYTES: "64",
+      }),
+    ).toThrow("CHAT_MAX_CIPHERTEXT_BYTES cannot fit inside REALTIME_MAX_MESSAGE_BYTES");
   });
 
   it("rejects origins containing a path", () => {

@@ -150,8 +150,11 @@ export class PostgresMeetingRepository implements MeetingRepository {
         const participant = await transaction.query<ParticipantRow>(
           `INSERT INTO hello_friend.participants
              (meeting_id, display_name, product_role, sfu_role,
-              permission_profile, permission_profile_version, state)
-           VALUES ($1, $2, $3, $4, $5, 1, 'pending_key_sync')
+              permission_profile, permission_profile_version, state, chat_join_position)
+           VALUES ($1, $2, $3, $4, $5, 1, 'pending_key_sync',
+                   (SELECT last_position
+                    FROM hello_friend.meeting_stream_heads
+                    WHERE meeting_id = $1))
            RETURNING id`,
           [meetingRow.id, command.displayName, role, sfuRole, `${meetingRow.mode}:${role}`],
         );

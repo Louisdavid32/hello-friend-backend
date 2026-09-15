@@ -71,11 +71,14 @@ describe("PostgresOutboxRepository", () => {
     const database = {} as PostgresConnection;
     const repository = new PostgresOutboxRepository(database, unitOfWork);
 
-    await expect(repository.claimBatch("worker-1", 50, 30_000)).resolves.toEqual([delivery]);
+    await expect(repository.claimBatch("worker-1", 50, 30_000, ["kafka_backend"])).resolves.toEqual(
+      [delivery],
+    );
     expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("FOR UPDATE SKIP LOCKED"), [
       50,
       "worker-1",
       30_000,
+      ["kafka_backend"],
     ]);
   });
 
@@ -105,7 +108,7 @@ describe("PostgresOutboxRepository", () => {
       {} as PostgresUnitOfWork,
     );
 
-    expect(() => repository.claimBatch("../worker", 10, 30_000)).toThrow(
+    expect(() => repository.claimBatch("../worker", 10, 30_000, ["redis_realtime"])).toThrow(
       "worker ID must use a bounded canonical format",
     );
     await expect(
@@ -118,8 +121,9 @@ describe("OutboxRelay", () => {
   it("publishes outside the claim and acknowledges successful deliveries", async () => {
     const publishMock = vi.fn(() => Promise.resolve());
     const markPublishedMock = vi.fn(() => Promise.resolve());
+    const claimBatchMock = vi.fn(() => Promise.resolve([delivery]));
     const repository = {
-      claimBatch: vi.fn(() => Promise.resolve([delivery])),
+      claimBatch: claimBatchMock,
       markPublished: markPublishedMock,
       markFailed: vi.fn(),
     } as unknown as OutboxRepository;
@@ -129,6 +133,12 @@ describe("OutboxRelay", () => {
     const relay = new OutboxRelay(repository, config, registry, silentLogger());
 
     await expect(relay.runOnce("worker-1", new AbortController().signal)).resolves.toBe(1);
+    expect(claimBatchMock).toHaveBeenCalledWith(
+      "worker-1",
+      config.outbox.batchSize,
+      config.outbox.leaseMs,
+      ["kafka_backend"],
+    );
     expect(publishMock).toHaveBeenCalledWith(delivery, expect.any(AbortSignal));
     expect(markPublishedMock).toHaveBeenCalledWith(delivery.deliveryId, "worker-1");
   });

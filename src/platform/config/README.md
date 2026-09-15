@@ -22,6 +22,12 @@ taille de message, backpressure, file de commandes, debit et connexions. Les val
 imposent un burst au moins egal au debit soutenu et un TTL de presence couvrant deux heartbeats.
 L'URL publique doit cibler exactement `/v1/realtime`, sans query ni fragment.
 
+Les variables `CHAT_*` bornent ciphertext, pages, quota, lease de voie rapide, polling des
+watermarks, buffer de remise en ordre et retention. Leur validation croisee garantit que l'enveloppe
+base64url tient dans `REALTIME_MAX_MESSAGE_BYTES` et que le lease depasse le timeout Redis avec
+marge. Le worker chat exige PostgreSQL/Redis mais ne charge pas les keyrings reserves aux processus
+HTTP/realtime.
+
 Pannes : une configuration incoherente arrete le processus avant ouverture du port. Aucun fallback
 production n'est invente.
 

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { PostgresConnection, PostgresUnitOfWork } from "../../platform/database/index.js";
 import { ApplicationError } from "../../platform/errors/index.js";
 import type { OutboxRepository } from "./outbox.repository.js";
-import type { OutboxDelivery, OutboxFailureResult } from "./outbox.types.js";
+import type { OutboxDelivery, OutboxDestination, OutboxFailureResult } from "./outbox.types.js";
 
 const deliveryRowSchema = z.object({
   delivery_id: z.uuid(),
@@ -31,10 +31,14 @@ export class PostgresOutboxRepository implements OutboxRepository {
     workerId: string,
     batchSize: number,
     leaseMs: number,
+    destinations: readonly OutboxDestination[],
   ): Promise<readonly OutboxDelivery[]> {
     assertWorkerId(workerId);
     assertIntegerRange(batchSize, 1, 500, "outbox batch size");
     assertIntegerRange(leaseMs, 1_000, 300_000, "outbox lease");
+    if (destinations.length < 1 || destinations.length > 3) {
+      throw new RangeError("Outbox destination allow-list is outside its allowed range");
+    }
 
     return this.unitOfWork.run(async (transaction) => {
       const result = await transaction.query<Record<string, unknown>>(
@@ -43,6 +47,7 @@ export class PostgresOutboxRepository implements OutboxRepository {
            FROM hello_friend.outbox_events
            WHERE published_at IS NULL
              AND dead_at IS NULL
+             AND destination = ANY($4::text[])
              AND available_at <= clock_timestamp()
              AND (locked_until IS NULL OR locked_until < clock_timestamp())
            ORDER BY available_at, created_at, delivery_id
@@ -58,7 +63,7 @@ export class PostgresOutboxRepository implements OutboxRepository {
          RETURNING event.delivery_id, event.event_id, event.event_type,
                    event.event_version, event.destination, event.partition_key,
                    event.payload, event.attempts, event.locked_until`,
-        [batchSize, workerId, leaseMs],
+        [batchSize, workerId, leaseMs, destinations],
       );
       return result.rows.map(mapDeliveryRow);
     });

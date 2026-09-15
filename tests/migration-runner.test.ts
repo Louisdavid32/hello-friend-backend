@@ -35,7 +35,7 @@ function migrationConfig(): ApplicationConfig {
 }
 
 describe("MigrationRunner", () => {
-  it("locks, applies a pending immutable file and records its checksum atomically", async () => {
+  it("locks, applies pending immutable files and records their checksums atomically", async () => {
     const statements: string[] = [];
     const inserts: unknown[][] = [];
     const releaseMock = vi.fn();
@@ -65,10 +65,15 @@ describe("MigrationRunner", () => {
     expect(statements.some((statement) => statement.includes("CREATE TABLE meetings"))).toBe(true);
     expect(statements).toContain("COMMIT");
     expect(statements.at(-1)).toBe("SELECT pg_advisory_unlock($1)");
-    expect(inserts).toHaveLength(1);
+    expect(inserts).toHaveLength(2);
     expect(inserts[0]).toEqual([
       "0001",
       "0001_core_schema.sql",
+      expect.stringMatching(/^[0-9a-f]{64}$/u),
+    ]);
+    expect(inserts[1]).toEqual([
+      "0002",
+      "0002_chat_delivery.sql",
       expect.stringMatching(/^[0-9a-f]{64}$/u),
     ]);
     expect(releaseMock).toHaveBeenCalledOnce();

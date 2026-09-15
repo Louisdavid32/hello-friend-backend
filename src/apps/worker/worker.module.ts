@@ -1,6 +1,6 @@
 import { type DynamicModule, Module } from "@nestjs/common";
 
-import { OutboxModule } from "../../modules/outbox/index.js";
+import { ChatWorkerModule } from "../../modules/chat/index.js";
 import { RealtimeTicketMaintenanceModule } from "../../modules/realtime-tickets/index.js";
 import { ApplicationConfigModule, type ApplicationConfig } from "../../platform/config/index.js";
 import { DatabaseModule } from "../../platform/database/index.js";
@@ -21,7 +21,7 @@ export class WorkerModule {
         HealthModule,
         DatabaseModule,
         RedisModule,
-        OutboxModule,
+        ...(config.chat.enabled ? [ChatWorkerModule] : []),
         RealtimeTicketMaintenanceModule,
       ],
     };

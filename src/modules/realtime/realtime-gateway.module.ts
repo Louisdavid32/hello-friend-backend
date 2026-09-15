@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { PresenceModule } from "../presence/index.js";
+import { ChatRealtimeModule } from "../chat/index.js";
 import { RealtimeTicketCoreModule } from "../realtime-tickets/index.js";
 import { SessionsModule } from "../sessions/index.js";
 import { RealtimeConnectionRegistry } from "./realtime-connection.registry.js";
@@ -11,7 +12,7 @@ import { WebSocketSourceAddress } from "./websocket-source-address.js";
 
 /** Composes secure application WebSocket transport without SFU media signaling. */
 @Module({
-  imports: [RealtimeTicketCoreModule, SessionsModule, PresenceModule],
+  imports: [RealtimeTicketCoreModule, SessionsModule, PresenceModule, ChatRealtimeModule],
   providers: [
     RealtimeGateway,
     RealtimeConnectionRegistry,
