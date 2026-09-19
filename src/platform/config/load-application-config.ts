@@ -12,6 +12,7 @@ import { ConfigurationError } from "./configuration-error.js";
 import { loadInfrastructureConfig } from "./infrastructure-config-loader.js";
 import { loadMeetingsConfig } from "./meetings-config-loader.js";
 import { loadRealtimeConfig } from "./realtime-config-loader.js";
+import { loadSfuAdmissionConfig } from "./sfu-admission-config-loader.js";
 import {
   assertValidCidrs,
   deepFreeze,
@@ -145,6 +146,26 @@ const environmentSchema = z.object({
   CHAT_RETENTION_DAYS: integer(1, 365).default(30),
   CHAT_CLEANUP_BATCH_SIZE: integer(10, 10_000).default(500),
   CHAT_CLEANUP_INTERVAL_MS: integer(10_000, 3_600_000).default(300_000),
+  SFU_ADMISSION_ENABLED: boolean.optional(),
+  SFU_ADMISSION_ISSUER: z.string().trim().default("http://localhost:3000"),
+  SFU_ADMISSION_AUDIENCE: z.string().trim().min(1).max(512).default("sfu-server"),
+  SFU_PUBLIC_URL: z.string().trim().default("ws://localhost:4000/ws"),
+  SFU_ADMISSION_TOKEN_TTL_SECONDS: integer(30, 300).default(60),
+  SFU_ADMISSION_CLOCK_SKEW_SECONDS: integer(0, 30).default(5),
+  SFU_ADMISSION_ISSUE_RATE_LIMIT: integer(1, 1_000).default(12),
+  SFU_ADMISSION_RATE_LIMIT_WINDOW_SECONDS: integer(1, 3_600).default(60),
+  SFU_ADMISSION_SIGNER: z.enum(["file", "aws-kms"]).optional(),
+  SFU_ADMISSION_KEY_ID: optionalNonEmptyString,
+  SFU_ADMISSION_PRIVATE_KEY_FILE: optionalNonEmptyString,
+  SFU_ADMISSION_KMS_KEY_ID: optionalNonEmptyString,
+  SFU_ADMISSION_KMS_REGION: optionalNonEmptyString,
+  SFU_ADMISSION_RETIRED_JWKS_FILE: optionalNonEmptyString,
+  SFU_ADMISSION_SIGNER_CONCURRENCY: integer(1, 64).default(8),
+  SFU_ADMISSION_SIGNER_QUEUE_CAPACITY: integer(1, 10_000).default(256),
+  SFU_ADMISSION_SIGN_TIMEOUT_MS: integer(100, 30_000).default(2_000),
+  SFU_ADMISSION_AUDIT_RETENTION_DAYS: integer(1, 365).default(30),
+  SFU_ADMISSION_AUDIT_CLEANUP_BATCH_SIZE: integer(10, 10_000).default(500),
+  SFU_ADMISSION_AUDIT_CLEANUP_INTERVAL_MS: integer(10_000, 3_600_000).default(300_000),
 });
 
 /**
@@ -210,6 +231,17 @@ export function loadApplicationConfig(
   ) {
     throw new ConfigurationError("Durable chat requires both PostgreSQL and Redis");
   }
+  const sfuAdmission = loadSfuAdmissionConfig(env, expectedRole, infrastructure.secrets.mountRoot);
+  if (
+    sfuAdmission.enabled &&
+    ((expectedRole === "api" && !meetings.enabled) ||
+      !infrastructure.database.enabled ||
+      !infrastructure.redis.enabled)
+  ) {
+    throw new ConfigurationError(
+      "SFU admission requires anonymous meetings, PostgreSQL, and Redis",
+    );
+  }
 
   return deepFreeze({
     runtime: {
@@ -262,6 +294,7 @@ export function loadApplicationConfig(
     meetings,
     realtime,
     chat,
+    sfuAdmission,
   });
 }
 

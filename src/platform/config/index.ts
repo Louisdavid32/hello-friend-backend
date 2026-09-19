@@ -17,6 +17,10 @@ export type {
   RuntimeConfig,
   RedisConfig,
   SecretsConfig,
+  SfuAdmissionConfig,
+  SfuAdmissionFileSignerConfig,
+  SfuAdmissionKmsSignerConfig,
+  SfuAdmissionSignerConfig,
 } from "./application-config.js";
 export { ApplicationConfigModule } from "./application-config.module.js";
 export { APPLICATION_CONFIG } from "./config.tokens.js";

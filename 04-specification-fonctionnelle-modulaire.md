@@ -196,6 +196,26 @@ Fonctions cibles :
 - diffusion multi-routeurs SFU selon charge, sans exposer la topologie interne ;
 - en E2EE, pas d'enregistrement serveur pretendument transparent.
 
+### 6.4 Admission SFU juste a temps
+
+| ID      | Exigence                                                                       | Statut       |
+| ------- | ------------------------------------------------------------------------------ | ------------ |
+| SFU-001 | session, appareil, reunion et participant sont revalides avant toute signature | `IMPLEMENTE` |
+| SFU-002 | le serveur derive role et permissions ; le client ne peut pas les demander     | `IMPLEMENTE` |
+| SFU-003 | un appel audio ne recoit jamais de droit video ou ecran                        | `IMPLEMENTE` |
+| SFU-004 | un viewer ne recoit jamais de transport send ni de droit `produce`             | `IMPLEMENTE` |
+| SFU-005 | E2EE `required` exige une appartenance media et un appareil actifs             | `IMPLEMENTE` |
+| SFU-006 | le JWT porte type, issuer, audience, temps, `jti`, room et permissions         | `IMPLEMENTE` |
+| SFU-007 | l'autorisation est revalidee apres signature avant divulgation du jeton        | `IMPLEMENTE` |
+| SFU-008 | le JWT n'est ni persiste, ni journalise, ni retourne deux fois                 | `IMPLEMENTE` |
+| SFU-009 | le JWKS publie cle courante et cles retirees avec cache borne                  | `IMPLEMENTE` |
+| SFU-010 | une reconnexion demande un nouveau jeton court sans rejouer l'ancien           | `IMPLEMENTE` |
+
+Le jeton donne acces au signaling media du SFU, pas au WebSocket applicatif. Il expire au plus tot
+entre son TTL et la session absolue. Un changement concurrent de role, version de politique, etat
+E2EE, session, participant ou reunion invalide la tentative avant que le client ne voie le jeton. La
+moderation active et le pilotage des producers appartiennent a l'etape 6.
+
 ## 7. Moderation et salle de cours
 
 ### 7.1 Couper micro ou camera
@@ -412,7 +432,7 @@ autorisation et restent facultatives car leur disponibilite varie.
 
 ## 13. Catalogue des modules et statut
 
-| Module             | Responsabilite                                | Statut apres implementation de l'etape 4                        |
+| Module             | Responsabilite                                | Statut apres implementation de l'etape 5                        |
 | ------------------ | --------------------------------------------- | --------------------------------------------------------------- |
 | `capabilities`     | HMAC et rotation des secrets                  | implemente                                                      |
 | `meetings`         | create/join et politiques de reunion          | create/join implementes, cycle complet planifie                 |
@@ -422,7 +442,7 @@ autorisation et restent facultatives car leur disponibilite varie.
 | `presence`         | etat ephemere Redis multi-instance            | implemente sur Redis 8 ; qualification Cluster encore requise   |
 | `outbox`           | livraison durable apres commit                | moteur, worker et handler Redis chat implementes                |
 | `chat`             | ciphertext durable et rattrapage              | etape 4 implementee ; provisioning MLS bloque etape 7           |
-| `sfu-admission`    | JWT/JWKS et profils                           | etape 5                                                         |
+| `sfu-admission`    | JWT/JWKS et profils                           | etape 5 implementee ; KMS reel a qualifier en staging           |
 | `sfu-control`      | terminer/revoquer via contrat SFU             | etape 6 et gate G-01                                            |
 | `e2ee`             | credentials, MLS et SFrame                    | etape 7 et gates G-02/G-03                                      |
 

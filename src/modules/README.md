@@ -17,6 +17,7 @@ Ordre et ownership :
 | `realtime`         | handshake WSS, protocole, limites et registre local           |
 | `chat`             | ciphertext durable, ordre et pagination                       |
 | `e2ee`             | credentials appareil, KeyPackages, epochs et artefacts MLS    |
+| `sfu-admission`    | JWT court, JWKS, KMS et autorisation media transactionnelle   |
 | `sfu-integration`  | admission/JWKS, control port et projections SFU               |
 | `outbox` / `inbox` | livraison et deduplication durables                           |
 | `presence`         | connexions et heartbeats Redis ephemeres                      |

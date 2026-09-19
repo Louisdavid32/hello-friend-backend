@@ -16,6 +16,7 @@ export * from "./modules/meetings/index.js";
 export * from "./modules/presence/index.js";
 export * from "./modules/realtime-tickets/index.js";
 export * from "./modules/realtime/index.js";
+export * from "./modules/sfu-admission/index.js";
 export * from "./modules/sessions/index.js";
 export * from "./platform/database/index.js";
 export * from "./platform/errors/index.js";

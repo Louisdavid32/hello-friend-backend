@@ -22,6 +22,11 @@ SFU. L'etape 4 ajoute le journal de chat chiffre, l'ordre par reunion, l'idempot
 d'ecriture et slow mode, la pagination par curseur/watermark, le fan-out Redis sharded, la reprise
 outbox, la retention bornee, les metriques et le contrat AsyncAPI 3.
 
+L'etape 5 ajoute l'admission media juste a temps : politiques par mode et role, JWT Ed25519 a faible
+TTL, signature AWS KMS en production, JWKS avec rotation, quota Redis, audit PostgreSQL sans jeton,
+double validation transactionnelle autour de la signature et contrat execute contre le verificateur
+reel du SFU. Le backend ne transporte toujours aucun media et la moderation SFU reste l'etape 6.
+
 Cette etape ne fabrique aucune cle. Tant que l'etape 7 n'a pas provisionne le groupe MLS et active
 l'appareil, une session issue du parcours create/join normal reste `pending_key_sync` et le chat
 refuse en securite avec `CHAT_KEY_SYNC_REQUIRED`. Aucun fallback en clair n'existe.
@@ -117,6 +122,18 @@ commandes `room.subscribe.chat`, `chat.message.submit` et `chat.sync.request`, a
 resultats et evenements, sont decrites dans `/asyncapi.json` en developpement/test et dans
 `src/modules/chat/README.md`.
 
+## Admission SFU locale
+
+L'admission est desactivee par defaut. En developpement, une cle Ed25519 PKCS#8 placee sous
+`SECRET_MOUNT_ROOT` peut etre utilisee avec `SFU_ADMISSION_SIGNER=file`. En staging et production,
+le demarrage refuse ce provider et exige `SFU_ADMISSION_SIGNER=aws-kms`, une cle asymetrique Ed25519
+`SIGN_VERIFY`, HTTPS pour l'emetteur et WSS pour le SFU.
+
+`POST /v1/sfu-admissions` authentifie la session et l'appareil, applique le quota Redis, derive les
+permissions depuis PostgreSQL, signe hors transaction puis revalide l'autorisation avant de rendre
+le jeton. `GET /v1/sfu-admission/jwks.json` publie uniquement les cles publiques. Les variables, la
+rotation et les pannes sont detaillees dans `.env.example` et `src/modules/sfu-admission/README.md`.
+
 ## Documentation
 
 - `01-cadrage-backend-temps-reel.md`
@@ -125,6 +142,7 @@ resultats et evenements, sont decrites dans `/asyncapi.json` en developpement/te
 - `04-specification-fonctionnelle-modulaire.md`
 - `05-rapport-validation-etape-3.md`
 - `06-rapport-validation-etape-4.md`
+- `07-rapport-validation-etape-5.md`
 - `src/modules/*/README.md`
 
 `npm run docs:check` bloque les API publiques non documentees. `npm run docs:code` genere le site

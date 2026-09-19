@@ -65,7 +65,7 @@ describe("MigrationRunner", () => {
     expect(statements.some((statement) => statement.includes("CREATE TABLE meetings"))).toBe(true);
     expect(statements).toContain("COMMIT");
     expect(statements.at(-1)).toBe("SELECT pg_advisory_unlock($1)");
-    expect(inserts).toHaveLength(2);
+    expect(inserts).toHaveLength(3);
     expect(inserts[0]).toEqual([
       "0001",
       "0001_core_schema.sql",
@@ -74,6 +74,11 @@ describe("MigrationRunner", () => {
     expect(inserts[1]).toEqual([
       "0002",
       "0002_chat_delivery.sql",
+      expect.stringMatching(/^[0-9a-f]{64}$/u),
+    ]);
+    expect(inserts[2]).toEqual([
+      "0003",
+      "0003_sfu_admission_audit.sql",
       expect.stringMatching(/^[0-9a-f]{64}$/u),
     ]);
     expect(releaseMock).toHaveBeenCalledOnce();

@@ -262,6 +262,67 @@ export interface ChatConfig {
   readonly cleanupIntervalMs: number;
 }
 
+/** File-backed Ed25519 signer used only for local development and controlled tests. */
+export interface SfuAdmissionFileSignerConfig {
+  /** Selects the protected PKCS#8 file implementation. */
+  readonly kind: "file";
+  /** Public, stable key identifier copied to JWT and JWKS headers. */
+  readonly keyId: string;
+  /** Absolute secret-mounted path containing an Ed25519 PKCS#8 PEM private key. */
+  readonly privateKeyFile: string;
+}
+
+/** AWS KMS Ed25519 signer used by staging and production processes. */
+export interface SfuAdmissionKmsSignerConfig {
+  /** Selects remote signing through AWS KMS. */
+  readonly kind: "aws-kms";
+  /** Public, stable key identifier copied to JWT and JWKS headers. */
+  readonly keyId: string;
+  /** AWS KMS key identifier or ARN; it is never exposed in the JWT. */
+  readonly kmsKeyId: string;
+  /** AWS region owning the signing key. */
+  readonly region: string;
+}
+
+/** Exactly one asymmetric signing implementation selected at startup. */
+export type SfuAdmissionSignerConfig = SfuAdmissionFileSignerConfig | SfuAdmissionKmsSignerConfig;
+
+/** Short-lived SFU admission, signing, abuse-control, and audit policy. */
+export interface SfuAdmissionConfig {
+  /** Enables the authenticated admission endpoint for API processes. */
+  readonly enabled: boolean;
+  /** Canonical JWT issuer expected verbatim by the SFU. */
+  readonly issuer: string;
+  /** Canonical JWT audience expected verbatim by the SFU. */
+  readonly audience: string;
+  /** Public secure WebSocket endpoint returned to admitted clients. */
+  readonly publicUrl: string;
+  /** Maximum token lifetime, also bounded by the durable session. */
+  readonly tokenTtlSeconds: number;
+  /** Allowed verifier clock skew used to reject unsafe TTL configurations. */
+  readonly clockSkewSeconds: number;
+  /** Admissions allowed per source and anonymous session in one Redis window. */
+  readonly issueRateLimit: number;
+  /** Distributed admission rate-limit fixed-window duration. */
+  readonly rateLimitWindowSeconds: number;
+  /** Maximum simultaneous asymmetric signing operations in one API process. */
+  readonly signerConcurrency: number;
+  /** Maximum waiting signing operations before fail-fast load shedding. */
+  readonly signerQueueCapacity: number;
+  /** Hard deadline for one local or KMS signing operation. */
+  readonly signerTimeoutMs: number;
+  /** Selected signer when admission is enabled. */
+  readonly signer?: SfuAdmissionSignerConfig;
+  /** Optional mounted JWKS containing still-valid retired public keys. */
+  readonly retiredJwksFile?: string;
+  /** Number of days token-free audit metadata remains available. */
+  readonly auditRetentionDays: number;
+  /** Maximum audit rows handled by one worker maintenance transaction. */
+  readonly auditCleanupBatchSize: number;
+  /** Delay between bounded admission-audit maintenance passes. */
+  readonly auditCleanupIntervalMs: number;
+}
+
 /** Complete immutable configuration consumed by a backend process. */
 export interface ApplicationConfig {
   /** Process identity and lifecycle configuration. */
@@ -288,4 +349,6 @@ export interface ApplicationConfig {
   readonly realtime: RealtimeConfig;
   /** Durable encrypted chat policy. */
   readonly chat: ChatConfig;
+  /** SFU admission and signing policy. */
+  readonly sfuAdmission: SfuAdmissionConfig;
 }

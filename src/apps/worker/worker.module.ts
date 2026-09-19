@@ -2,6 +2,7 @@ import { type DynamicModule, Module } from "@nestjs/common";
 
 import { ChatWorkerModule } from "../../modules/chat/index.js";
 import { RealtimeTicketMaintenanceModule } from "../../modules/realtime-tickets/index.js";
+import { SfuAdmissionMaintenanceModule } from "../../modules/sfu-admission/index.js";
 import { ApplicationConfigModule, type ApplicationConfig } from "../../platform/config/index.js";
 import { DatabaseModule } from "../../platform/database/index.js";
 import { ErrorsModule } from "../../platform/errors/index.js";
@@ -23,6 +24,7 @@ export class WorkerModule {
         RedisModule,
         ...(config.chat.enabled ? [ChatWorkerModule] : []),
         RealtimeTicketMaintenanceModule,
+        ...(config.sfuAdmission.enabled ? [SfuAdmissionMaintenanceModule] : []),
       ],
     };
   }

@@ -2,6 +2,7 @@ import { type DynamicModule, Module } from "@nestjs/common";
 
 import { MeetingsModule } from "../../modules/meetings/index.js";
 import { RealtimeTicketsModule } from "../../modules/realtime-tickets/index.js";
+import { SfuAdmissionModule } from "../../modules/sfu-admission/index.js";
 import { ApplicationConfigModule, type ApplicationConfig } from "../../platform/config/index.js";
 import { DatabaseModule } from "../../platform/database/index.js";
 import { ErrorsModule } from "../../platform/errors/index.js";
@@ -22,6 +23,7 @@ export class ApiModule {
         DatabaseModule,
         RedisModule,
         ...(config.meetings.enabled ? [MeetingsModule, RealtimeTicketsModule] : []),
+        ...(config.sfuAdmission.enabled ? [SfuAdmissionModule] : []),
       ],
     };
   }
